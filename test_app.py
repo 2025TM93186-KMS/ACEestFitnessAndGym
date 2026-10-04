@@ -32,6 +32,16 @@ def test_entire_plan_successful_lookup(client):
     assert response.json['ui_color'] == "#2ecc71"
     assert "Chicken Biryani" in response.json['daily_nutrition_plan']
 
+def test_case_insensitive_workout_lookup(client):
+    response = client.get('/api/v1.0/weekly_workout_chart?program_name=fat loss (fl)')
+    assert response.status_code == 200
+    assert "Back Squat" in response.json['weekly_workout_chart']
+
+def test_case_insensitive_nutrition_lookup(client):
+    response = client.get('/api/v1.0/daily_nutrition_plan?program_name=mUsCLe GaIn (Mg)')
+    assert response.status_code == 200
+    assert "3,200 kcal" in response.json['daily_nutrition_plan']
+
 def test_missing_parameter_error_gate(client):
     """Validates robust exception mapping when client leaves arguments blank"""
     response = client.get('/api/v1.0/entire_plan')

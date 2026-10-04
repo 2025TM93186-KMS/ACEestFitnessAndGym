@@ -35,6 +35,23 @@ pipeline {
                 bat "docker run --rm %APP_NAME%:%BUILD_NUMBER% pytest test_app.py"
             }
         }
+
+        stage('Build') {
+            steps {
+                echo 'Building'
+            }
+        }
+        stage('Test') {
+            steps {
+                echo 'Testing'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                echo 'Deploying'
+            }
+        }
+
     }
 
     post {
@@ -42,5 +59,23 @@ pipeline {
             echo 'Purging Windows working directory allocations to clear file system locking processes.'
             cleanWs()
         }
+        success {
+            echo 'I succeeded!'
+        }
+        unstable {
+            echo 'I am unstable :/'
+        }
+        failure {
+            echo 'I failed :('
+            mail to: "${env.NOTIFICATION_EMAIL}",
+            subject: "Failed Pipeline:
+            ${currentBuild.fullDisplayName}",
+            body: "Something is wrong with
+            ${env.BUILD_URL}"
+        }
+        changed {
+            echo 'Things were different before...'
+        }
+
     }
 }

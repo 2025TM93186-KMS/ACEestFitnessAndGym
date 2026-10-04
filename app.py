@@ -40,7 +40,9 @@ def api_root():
         "available_endpoints": {
             "programs": "/api/v1.0/programs",
             "health": "/api/v1.0/health",
-            "entire_plan": "/api/v1.0/entire_plan"
+            "entire_plan": "/api/v1.0/entire_plan",
+            "weekly_workout_chart": "/api/v1.0/weekly_workout_chart",
+            "daily_nutrition_plan": "/api/v1.0/daily_nutrition_plan"
         }
     }), 200
 
@@ -74,6 +76,30 @@ def get_entire_plan():
         "weekly_workout_chart": program.get("workout"),
         "daily_nutrition_plan": program.get("diet")
     }), 200
+
+@app.route("/api/v1.0/weekly_workout_chart", methods=["GET"])
+def get_weekly_workout_chart():
+    program_name = request.args.get("program_name")
+    if not program_name:
+        return jsonify({"error": "Missing 'program_name' query parameter"}), 400
+
+    program = PROGRAMS_LOWER.get(program_name.lower())
+    if not program:
+        return jsonify({"error": f"Program '{program_name}' not found"}), 404
+
+    return jsonify({"weekly_workout_chart": program.get("workout")}), 200
+
+@app.route("/api/v1.0/daily_nutrition_plan", methods=["GET"])
+def get_daily_nutrition_plan():
+    program_name = request.args.get("program_name")
+    if not program_name:
+        return jsonify({"error": "Missing 'program_name' query parameter"}), 400
+
+    program = PROGRAMS_LOWER.get(program_name.lower())
+    if not program:
+        return jsonify({"error": f"Program '{program_name}' not found"}), 404
+
+    return jsonify({"daily_nutrition_plan": program.get("diet")}), 200
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=False)
