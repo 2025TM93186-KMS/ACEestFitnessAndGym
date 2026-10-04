@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        APP_NAME = 'aceest-fitness-app'
+        APP_NAME     = 'aceest-fitness-app'
         DEV_URL      = "http://localhost:5001"
         TEST_URL     = "http://localhost:5002"
         STAGE_URL    = "http://localhost:5003"
@@ -13,6 +13,12 @@ pipeline {
     }
 
     stages {
+        stage('Initialize') {
+            steps {
+                echo "Starting the automation pipeline for: ${env.APP_NAME}"
+            }
+        }
+
         stage('Repository Synchronization') {
             steps {
                 echo 'Pulling application code parameters cleanly from GitHub tracking layers...'
@@ -23,7 +29,6 @@ pipeline {
         stage('Docker Compression Assembly') {
             steps {
                 echo 'Assembling cached container virtualization blocks on Windows Docker Desktop...'
-                // This builds the container first so we can use its built-in Python environment
                 bat "docker build -t %APP_NAME%:%BUILD_NUMBER% ."
             }
         }
@@ -31,7 +36,6 @@ pipeline {
         stage('Static Lint Analysis') {
             steps {
                 echo 'Validating Python syntax compilation structure inside the Docker Container...'
-                // OPTIMIZATION: Runs the compilation check using the container's internal Python
                 bat "docker run --rm %APP_NAME%:%BUILD_NUMBER% python -m py_compile app.py"
             }
         }
@@ -43,41 +47,49 @@ pipeline {
             }
         }
 
-        stage('Build') {
-            steps {
-                echo 'Building'
-            }
-        }
-        stage('Test') {
-            steps {
-                echo 'Testing'
-            }
-        }
-        stage('Deploy') {
-            steps {
-                echo 'Deploying'
-            }
-        }
         stage('Deploy to Dev') {
             when { branch 'Develop' }
             steps {
-                echo "Deploying to DEV environment..."
-                // Add your Dev deployment script/commands here
-        }
-        stage('Initialize') {
-            steps {
-                // Printing it out in Jenkins console logs
-                echo "Starting the automation pipeline for: ${env.APP_NAME}"
-            }
-        }
-        stage('Install Dependencies') {
-            steps {
-                echo "Installing Flask and requirements..."
-                // Ensures your environment has Flask and Flask-CORS
-                sh 'pip install -r requirements.txt --break-system-packages || pip install flask flask-cors'
+                echo "Deploying to DEV environment at ${env.DEV_URL}..."
+                bat """
+                FOR /F "tokens=*" %%i IN ('docker ps -q --filter "publish=%CURRENT_PORT%"') DO docker stop %%i
+                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-dev-%BUILD_NUMBER% %APP_NAME%:%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
+                """
             }
         }
 
+        stage('Deploy to Test') {
+            when { branch 'Test' }
+            steps {
+                echo "Deploying to TEST environment at ${env.TEST_URL}..."
+                bat """
+                FOR /F "tokens=*" %%i IN ('docker ps -q --filter "publish=%CURRENT_PORT%"') DO docker stop %%i
+                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-test-%BUILD_NUMBER% %APP_NAME%:%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
+                """
+            }
+        }
+
+        stage('Deploy to Stage') {
+            when { branch 'Stage' }
+            steps {
+                echo "Deploying to STAGING environment at ${env.STAGE_URL}..."
+                bat """
+                FOR /F "tokens=*" %%i IN ('docker ps -q --filter "publish=%CURRENT_PORT%"') DO docker stop %%i
+                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-stage-%BUILD_NUMBER% %APP_NAME%:%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
+                """
+            }
+        }
+
+        stage('Deploy to Prod') {
+            when { branch 'Main' } // Change this to 'Master' if that is your production branch name
+            steps {
+                echo "Deploying to PRODUCTION environment at ${env.PROD_URL}..."
+                bat """
+                FOR /F "tokens=*" %%i IN ('docker ps -q --filter "publish=%CURRENT_PORT%"') DO docker stop %%i
+                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-prod-%BUILD_NUMBER% %APP_NAME%:%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
+                """
+            }
+        }
     }
 
     post {
@@ -100,6 +112,5 @@ pipeline {
         changed {
             echo 'Things were different before...'
         }
-
     }
 }
