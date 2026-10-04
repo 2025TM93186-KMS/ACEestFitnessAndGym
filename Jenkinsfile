@@ -3,6 +3,13 @@ pipeline {
 
     environment {
         APP_NAME = 'aceest-fitness-app'
+        DEV_URL      = "http://localhost:5001"
+        TEST_URL     = "http://localhost:5002"
+        STAGE_URL    = "http://localhost:5003"
+        PROD_URL     = "http://localhost:5004"
+
+        // Dynamic target mapping depending on the current branch name
+        CURRENT_PORT = "${env.BRANCH_NAME == 'Develop' ? '5001' : env.BRANCH_NAME == 'Test' ? '5002' : env.BRANCH_NAME == 'Stage' ? '5003' : '5004'}"
     }
 
     stages {
@@ -49,6 +56,25 @@ pipeline {
         stage('Deploy') {
             steps {
                 echo 'Deploying'
+            }
+        }
+        stage('Deploy to Dev') {
+            when { branch 'Develop' }
+            steps {
+                echo "Deploying to DEV environment..."
+                // Add your Dev deployment script/commands here
+        }
+        stage('Initialize') {
+            steps {
+                // Printing it out in Jenkins console logs
+                echo "Starting the automation pipeline for: ${env.APP_NAME}"
+            }
+        }
+        stage('Install Dependencies') {
+            steps {
+                echo "Installing Flask and requirements..."
+                // Ensures your environment has Flask and Flask-CORS
+                sh 'pip install -r requirements.txt --break-system-packages || pip install flask flask-cors'
             }
         }
 
