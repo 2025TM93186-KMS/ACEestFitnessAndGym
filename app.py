@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import sys
 
 app = Flask(__name__)
 CORS(app)  # Eliminates Cross-Origin blocking parameters for client integrations
@@ -101,5 +102,14 @@ def get_daily_nutrition_plan():
 
     return jsonify({"daily_nutrition_plan": program.get("diet")}), 200
 
+
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    port_number = 5000
+    for arg in sys.argv:
+        if arg.startswith('--port='):
+            # FIX: Added [1] to safely extract the value after the '=' sign
+            port_number = int(arg.split('=')[1])
+
+    print(f"Launching ACEest Fitness Engine on port {port_number}")
+    app.run(host='0.0.0.0', port=port_number, debug=False)
+

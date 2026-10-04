@@ -15,5 +15,4 @@ RUN apk del .build-deps
 COPY . .
 
 
-
 CMD ["python", "app.py"]
