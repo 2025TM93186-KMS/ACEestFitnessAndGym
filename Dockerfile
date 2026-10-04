@@ -14,6 +14,6 @@ RUN apk del .build-deps
 
 COPY . .
 
-EXPOSE 5000
+
 
 CMD ["python", "app.py"]
