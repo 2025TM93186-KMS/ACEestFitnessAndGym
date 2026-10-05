@@ -50,21 +50,34 @@ pipeline {
         stage('Code Quality Inspection (SonarQube)') {
             steps {
                 script {
-                    // This lookup requires a matching name configured under Manage Jenkins -> Global Tool Configuration
-                    def scannerHome = tool 'SonarScanner'
+                    try {
+                        // 1. Attemps to find the scanner via global tool definition configuration
+                        def scannerHome = tool 'SonarScanner'
 
-                    // Automatically pulls credentials and targets your cloud server configurations
-                    withSonarQubeEnv('SonarQube') {
-                        bat """
-                        "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                          -Dsonar.projectKey=${env.SONARCLOUD_PROJECT_KEY} ^
-                          -Dsonar.organization=${env.SONARCLOUD_ORGANIZATION_KEY} ^
-                          -Dsonar.sources=. ^
-                          -Dsonar.python.version=3.10
-                        """
+                        withSonarQubeEnv('SonarQube') {
+                            bat """
+                            "${scannerHome}\\bin\\sonar-scanner.bat" ^
+                              -Dsonar.projectKey=${env.SONARCLOUD_PROJECT_KEY} ^
+                              -Dsonar.organization=${env.SONARCLOUD_ORGANIZATION_KEY} ^
+                              -Dsonar.sources=. ^
+                              -Dsonar.python.version=3.10
+                            """
+                        }
+                    } catch (Exception e) {
+                        // 2. Safe localized fallback if Jenkins tool name definitions are unconfigured or mismatching
+                        echo "Global 'SonarScanner' tool profile not found. Attempting systemic environment path fallback..."
+                        withSonarQubeEnv('SonarQube') {
+                            bat """
+                            sonar-scanner.bat ^
+                              -Dsonar.projectKey=${env.SONARCLOUD_PROJECT_KEY} ^
+                              -Dsonar.organization=${env.SONARCLOUD_ORGANIZATION_KEY} ^
+                              -Dsonar.sources=. ^
+                              -Dsonar.python.version=3.10
+                            """
+                        }
                     }
 
-                    // Pauses and checks the Quality Gate status response before allowing deployment stages
+                    // 3. Pauses to evaluate the Quality Gate response status thresholds
                     timeout(time: 10, unit: 'MINUTES') {
                         def qg = waitForQualityGate()
                         if (qg.status != 'OK') {
@@ -133,9 +146,17 @@ pipeline {
         }
         failure {
             echo 'I failed :('
-            mail to: "${env.NOTIFICATION_EMAIL}",
-                 subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
-                 body: "Something is wrong with ${env.BUILD_URL}"
+            echo "Pipeline failure alert: Something is wrong with execution block link: ${env.BUILD_URL}"
+
+            try {
+                if (env.NOTIFICATION_EMAIL) {
+                    mail to: "${env.NOTIFICATION_EMAIL}",
+                         subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
+                         body: "Something is wrong with ${env.BUILD_URL}"
+                }
+            } catch (Exception mailError) {
+                echo "Unable to dispatch SMTP alert notification: ${mailError.getMessage()}"
+            }
         }
         changed {
             echo 'Things were different before...'
