@@ -47,6 +47,34 @@ pipeline {
             }
         }
 
+        stage('Code Quality Inspection (SonarQube)') {
+            steps {
+                script {
+                    // This lookup requires a matching name configured under Manage Jenkins -> Global Tool Configuration
+                    def scannerHome = tool 'SonarScanner'
+
+                    // Automatically pulls credentials and targets your cloud server configurations
+                    withSonarQubeEnv('SonarQube') {
+                        bat """
+                        "${scannerHome}\\bin\\sonar-scanner.bat" ^
+                          -Dsonar.projectKey=${env.SONARCLOUD_PROJECT_KEY} ^
+                          -Dsonar.organization=${env.SONARCLOUD_ORGANIZATION_KEY} ^
+                          -Dsonar.sources=. ^
+                          -Dsonar.python.version=3.10
+                        """
+                    }
+
+                    // Pauses and checks the Quality Gate status response before allowing deployment stages
+                    timeout(time: 10, unit: 'MINUTES') {
+                        def qg = waitForQualityGate()
+                        if (qg.status != 'OK') {
+                            error "Pipeline aborted due to Quality Gate Failure! Status: ${qg.status}"
+                        }
+                    }
+                }
+            }
+        }
+
         stage('Deploy to Dev') {
             when { branch 'Develop' }
             steps {
@@ -81,7 +109,7 @@ pipeline {
         }
 
         stage('Deploy to Prod') {
-            when { branch 'Main' } // Change this to 'Master' if that is your production branch name
+            when { branch 'main' }
             steps {
                 echo "Deploying to PRODUCTION environment at ${env.PROD_URL}..."
                 bat """
@@ -90,35 +118,6 @@ pipeline {
                 """
             }
         }
-
-        stage('Code Quality Inspection (SonarQube)') {
-            steps {
-                script {
-                    // 1. Fetches the binary execution directory from Jenkins Tools
-                    def scannerHome = tool 'SonarScanner'
-
-                    // 2. Automatically pulls your credentials and targets the cloud server
-                    withSonarQubeEnv('SonarQube') {
-                        bat """
-                        "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                          -Dsonar.projectKey=${env.SONARCLOUD_PROJECT_KEY} ^
-                          -Dsonar.organization=${env.SONARCLOUD_ORGANIZATION_KEY} ^
-                          -Dsonar.sources=. ^
-                          -Dsonar.python.version=3.10
-                        """
-                    }
-
-                    // 3. Pauses and checks the Quality Gate status response
-                    timeout(time: 10, unit: 'MINUTES') {
-                        def qg = waitForQualityGate()
-                        if (qg.status != 'OK') {
-                            error "Pipeline aborted due to Quality Gate Failure! Status: ${qg.status}"
-                        }
-                    }
-                }
-            }
-        }
-
     }
 
     post {
