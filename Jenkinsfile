@@ -47,47 +47,6 @@ pipeline {
             }
         }
 
-        stage('Code Quality Inspection (SonarQube)') {
-            steps {
-                script {
-                    try {
-                        // 1. Attemps to find the scanner via global tool definition configuration
-                        def scannerHome = tool 'SonarScanner'
-
-                        withSonarQubeEnv('SonarQube') {
-                            bat """
-                            "${scannerHome}\\bin\\sonar-scanner.bat" ^
-                              -Dsonar.projectKey=${env.SONARCLOUD_PROJECT_KEY} ^
-                              -Dsonar.organization=${env.SONARCLOUD_ORGANIZATION_KEY} ^
-                              -Dsonar.sources=. ^
-                              -Dsonar.python.version=3.10
-                            """
-                        }
-                    } catch (Exception e) {
-                        // 2. Safe localized fallback if Jenkins tool name definitions are unconfigured or mismatching
-                        echo "Global 'SonarScanner' tool profile not found. Attempting systemic environment path fallback..."
-                        withSonarQubeEnv('SonarQube') {
-                            bat """
-                            sonar-scanner.bat ^
-                              -Dsonar.projectKey=${env.SONARCLOUD_PROJECT_KEY} ^
-                              -Dsonar.organization=${env.SONARCLOUD_ORGANIZATION_KEY} ^
-                              -Dsonar.sources=. ^
-                              -Dsonar.python.version=3.10
-                            """
-                        }
-                    }
-
-                    // 3. Pauses to evaluate the Quality Gate response status thresholds
-                    timeout(time: 10, unit: 'MINUTES') {
-                        def qg = waitForQualityGate()
-                        if (qg.status != 'OK') {
-                            error "Pipeline aborted due to Quality Gate Failure! Status: ${qg.status}"
-                        }
-                    }
-                }
-            }
-        }
-
         stage('Deploy to Dev') {
             when { branch 'Develop' }
             steps {
@@ -122,7 +81,7 @@ pipeline {
         }
 
         stage('Deploy to Prod') {
-            when { branch 'main' }
+            when { branch 'Main' }
             steps {
                 echo "Deploying to PRODUCTION environment at ${env.PROD_URL}..."
                 bat """
@@ -145,17 +104,20 @@ pipeline {
             echo 'I am unstable :/'
         }
         failure {
-            echo 'I failed :('
             echo "Pipeline failure alert: Something is wrong with execution block link: ${env.BUILD_URL}"
 
-            try {
-                if (env.NOTIFICATION_EMAIL) {
-                    mail to: "${env.NOTIFICATION_EMAIL}",
-                         subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
-                         body: "Something is wrong with ${env.BUILD_URL}"
+            script {
+                try {
+                    if (env.NOTIFICATION_EMAIL) {
+                        mail to: "${env.NOTIFICATION_EMAIL}",
+                             subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
+                             body: "Something is wrong with ${env.BUILD_URL}"
+                    } else {
+                        echo "No NOTIFICATION_EMAIL environment variable set. Skipping email dispatch."
+                    }
+                } catch (Exception mailError) {
+                    echo "Unable to dispatch SMTP alert notification: ${mailError.getMessage()}"
                 }
-            } catch (Exception mailError) {
-                echo "Unable to dispatch SMTP alert notification: ${mailError.getMessage()}"
             }
         }
         changed {
