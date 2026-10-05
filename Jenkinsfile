@@ -3,6 +3,7 @@ pipeline {
 
     environment {
         APP_NAME     = 'aceest-fitness-app'
+        APP_VERSION  = '1.1.2'  // BUMPED: Added target release version explicitly
         DEV_URL      = "http://localhost:5001"
         TEST_URL     = "http://localhost:5002"
         STAGE_URL    = "http://localhost:5003"
@@ -15,7 +16,7 @@ pipeline {
     stages {
         stage('Initialize') {
             steps {
-                echo "Starting the automation pipeline for: ${env.APP_NAME}"
+                echo "Starting the automation pipeline for: ${env.APP_NAME} v${env.APP_VERSION}"
             }
         }
 
@@ -29,21 +30,21 @@ pipeline {
         stage('Docker Compression Assembly') {
             steps {
                 echo 'Assembling cached container virtualization blocks on Windows Docker Desktop...'
-                bat "docker build -t %APP_NAME%:%BUILD_NUMBER% ."
+                bat "docker build -t %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% ."
             }
         }
 
         stage('Static Lint Analysis') {
             steps {
                 echo 'Validating Python syntax compilation structure inside the Docker Container...'
-                bat "docker run --rm %APP_NAME%:%BUILD_NUMBER% python -m py_compile app.py"
+                bat "docker run --rm %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% python -m py_compile app.py"
             }
         }
 
         stage('Automated Pytest Execution') {
             steps {
                 echo 'Invoking component assertion tests inside clean container context...'
-                bat "docker run --rm %APP_NAME%:%BUILD_NUMBER% pytest test_app.py"
+                bat "docker run --rm %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% pytest test_app.py"
             }
         }
 
@@ -53,7 +54,7 @@ pipeline {
                 echo "Deploying to DEV environment at ${env.DEV_URL}..."
                 bat """
                 FOR /F "tokens=*" %%i IN ('docker ps -q --filter "publish=%CURRENT_PORT%"') DO docker stop %%i
-                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-dev-%BUILD_NUMBER% %APP_NAME%:%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
+                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-dev-%BUILD_NUMBER% %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
                 """
             }
         }
@@ -64,7 +65,7 @@ pipeline {
                 echo "Deploying to TEST environment at ${env.TEST_URL}..."
                 bat """
                 FOR /F "tokens=*" %%i IN ('docker ps -q --filter "publish=%CURRENT_PORT%"') DO docker stop %%i
-                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-test-%BUILD_NUMBER% %APP_NAME%:%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
+                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-test-%BUILD_NUMBER% %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
                 """
             }
         }
@@ -75,7 +76,7 @@ pipeline {
                 echo "Deploying to STAGING environment at ${env.STAGE_URL}..."
                 bat """
                 FOR /F "tokens=*" %%i IN ('docker ps -q --filter "publish=%CURRENT_PORT%"') DO docker stop %%i
-                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-stage-%BUILD_NUMBER% %APP_NAME%:%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
+                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-stage-%BUILD_NUMBER% %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
                 """
             }
         }
@@ -86,7 +87,7 @@ pipeline {
                 echo "Deploying to PRODUCTION environment at ${env.PROD_URL}..."
                 bat """
                 FOR /F "tokens=*" %%i IN ('docker ps -q --filter "publish=%CURRENT_PORT%"') DO docker stop %%i
-                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-prod-%BUILD_NUMBER% %APP_NAME%:%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
+                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-prod-%BUILD_NUMBER% %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
                 """
             }
         }
@@ -105,9 +106,19 @@ pipeline {
         }
         failure {
             echo 'I failed :('
-            mail to: "${env.NOTIFICATION_EMAIL}",
-                 subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
-                 body: "Something is wrong with ${env.BUILD_URL}"
+            script {
+                try {
+                    if (env.NOTIFICATION_EMAIL) {
+                        mail to: "${env.NOTIFICATION_EMAIL}",
+                             subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
+                             body: "Something is wrong with ${env.BUILD_URL}"
+                    } else {
+                        echo "No NOTIFICATION_EMAIL environment variable set. Skipping email dispatch."
+                    }
+                } catch (Exception mailError) {
+                    echo "Unable to dispatch SMTP alert notification: ${mailError.getMessage()}"
+                }
+            }
         }
         changed {
             echo 'Things were different before...'
