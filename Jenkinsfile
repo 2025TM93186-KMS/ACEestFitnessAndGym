@@ -90,6 +90,35 @@ pipeline {
                 """
             }
         }
+
+        stage('Code Quality Inspection (SonarQube)') {
+            steps {
+                script {
+                    // 1. Fetches the binary execution directory from Jenkins Tools
+                    def scannerHome = tool 'SonarScanner'
+
+                    // 2. Automatically pulls your credentials and targets the cloud server
+                    withSonarQubeEnv('SonarQube') {
+                        bat """
+                        "${scannerHome}\\bin\\sonar-scanner.bat" ^
+                          -Dsonar.projectKey=${env.SONARCLOUD_PROJECT_KEY} ^
+                          -Dsonar.organization=${env.SONARCLOUD_ORGANIZATION_KEY} ^
+                          -Dsonar.sources=. ^
+                          -Dsonar.python.version=3.10
+                        """
+                    }
+
+                    // 3. Pauses and checks the Quality Gate status response
+                    timeout(time: 10, unit: 'MINUTES') {
+                        def qg = waitForQualityGate()
+                        if (qg.status != 'OK') {
+                            error "Pipeline aborted due to Quality Gate Failure! Status: ${qg.status}"
+                        }
+                    }
+                }
+            }
+        }
+
     }
 
     post {
