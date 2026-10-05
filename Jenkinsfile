@@ -81,7 +81,7 @@ pipeline {
         }
 
         stage('Deploy to Prod') {
-            when { branch 'main' }
+            when { branch 'main' } // Change this to 'Master' if that is your production branch name
             steps {
                 echo "Deploying to PRODUCTION environment at ${env.PROD_URL}..."
                 bat """
@@ -104,26 +104,10 @@ pipeline {
             echo 'I am unstable :/'
         }
         failure {
-            echo "Pipeline failure alert: Something is wrong with execution block link: ${env.BUILD_URL}"
-<<<<<<< HEAD
-
-=======
-            
-            // FIXED: Wrapped the try-catch block inside a script step so Jenkins parses it cleanly
->>>>>>> 0d5f33537b5dc54b4b5fb3af598a27ac127855ba
-            script {
-                try {
-                    if (env.NOTIFICATION_EMAIL) {
-                        mail to: "${env.NOTIFICATION_EMAIL}",
-                             subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
-                             body: "Something is wrong with ${env.BUILD_URL}"
-                    } else {
-                        echo "No NOTIFICATION_EMAIL environment variable set. Skipping email dispatch."
-                    }
-                } catch (Exception mailError) {
-                    echo "Unable to dispatch SMTP alert notification: ${mailError.getMessage()}"
-                }
-            }
+            echo 'I failed :('
+            mail to: "${env.NOTIFICATION_EMAIL}",
+                 subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
+                 body: "Something is wrong with ${env.BUILD_URL}"
         }
         changed {
             echo 'Things were different before...'
