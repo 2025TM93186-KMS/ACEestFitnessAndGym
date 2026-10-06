@@ -2,6 +2,9 @@ import os
 import pytest
 from app import app
 
+import io
+import csv
+
 TEST_DB_NAME = "test_aceest_fitness.db"
 
 @pytest.fixture
@@ -82,3 +85,41 @@ def test_v2_1_2_save_progress_success(client):
     response = client.post('/api/v2.1.2/progress', json=payload)
     assert response.status_code == 201
     assert "Weekly progress logged" in response.json["message"]
+
+# ==============================================================================
+# NEWLY APPENDED TESTS FOR : v2.2.1
+# ==============================================================================
+
+def test_v2_2_1_export_progress_success(client):
+    # Seed progress tracking history lines for the query context
+    payload = {"name": "Jane", "adherence": 85}
+    client.post('/api/v2.1.2/progress', json=payload)
+
+    # Execute endpoint fetch download stream
+    response = client.get('/api/v2.2.1/progress/export?name=Jane')
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["Content-Type"]
+    assert "attachment" in response.headers["Content-Disposition"]
+    assert "filename=jane_progress.csv" in response.headers["Content-Disposition"]
+
+    # Parse down the output binary stream data wrapper back to list lines
+    csv_file = io.StringIO(response.data.decode("utf-8"))
+    reader = csv.reader(csv_file)
+    rows = list(reader)
+
+    # Validate header fields and percentage appended string definitions
+    assert rows[0] == ["Client Name", "Week Identifier", "Adherence Percentage"]
+    assert rows[1][0] == "Jane"
+    assert rows[1][2] == "85%"
+
+
+def test_v2_2_1_export_progress_missing_name_param(client):
+    response = client.get('/api/v2.2.1/progress/export')
+    assert response.status_code == 400
+    assert "Missing required 'name' filter parameter" in response.json["error"]
+
+
+def test_v2_2_1_export_progress_client_not_found(client):
+    response = client.get('/api/v2.2.1/progress/export?name=UnknownUser')
+    assert response.status_code == 404
+    assert "No structural timelines logged for UnknownUser" in response.json["error"]

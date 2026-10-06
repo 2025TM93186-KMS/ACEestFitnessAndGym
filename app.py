@@ -9,7 +9,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)  # Eliminates Cross-Origin blocking parameters for client integrations
-CLIENTS_DB = []
+
 DB_NAME = "aceest_fitness.db"
 
 PROGRAMS = {
@@ -51,23 +51,26 @@ def ensure_db_initialized():
 # ==========================================
 # FINAL REFINED ENDPOINTS OF v2 : V2.1.2
 # ==========================================
-@app.route("/api/v2.1.2", methods=["GET"])
+@app.route("/api/v2.2.1", methods=["GET"])
 def api_root():
     return jsonify({
-        "version": "2.1.2",
+        "version": "2.2.1",
         "status": "active",
         "service": "ACEest Fitness Foundation Engine",
         "available_endpoints": {
+            "health_2_1_2": "GET /api/v2.1.2/health",
             "health": "GET /api/v2.1.2/health",
             "save_client": "POST /api/v2.1.2/client",
             "load_client": "GET /api/v2.1.2/client",
-            "save_progress": "POST /api/v2.1.2/progress"
+            "save_progress": "POST /api/v2.1.2/progress",
+            "load_progress": "GET /api/v2.2.1/progress",
+            "export_progress":"GET /api/v2.2.1/progress/export"
         }
     }), 200
 
 """Health Check V2.1.2"""
 @app.route("/api/v2.1.2/health", methods=["GET"])
-def health_check():
+def health_check_2_1_2():
     return (
         jsonify(
             {
@@ -78,7 +81,20 @@ def health_check():
         200,
     )
 
+@app.route("/api/v2.2.1/health", methods=["GET"])
+def health_check():
+    return (
+        jsonify(
+            {
+                "status": "healthy",
+                "service": "ACEest Fitness API V2.2.1 Backend",
+            }
+        ),
+        200,
+    )
+
 @app.route("/api/v2.1.2/client", methods=["POST"])
+@app.route("/api/v2.2.1/client", methods=["POST"])
 def save_client():
     ensure_db_initialized()  # Auto-creates tables seamlessly if missing
     data = request.json or {}
@@ -122,6 +138,7 @@ def save_client():
 
 
 @app.route("/api/v2.1.2/client", methods=["GET"])
+@app.route("/api/v2.2.1/client", methods=["GET"])
 def load_client():
     ensure_db_initialized()  # Auto-creates tables seamlessly if missing
     name = request.args.get("name")
@@ -154,6 +171,7 @@ def load_client():
     )
 
 @app.route("/api/v2.1.2/progress", methods=["POST"])
+@app.route("/api/v2.2.1/progress", methods=["POST"])
 def save_progress():
     ensure_db_initialized()  # Auto-creates tables seamlessly if missing
     data = request.json or {}
@@ -183,6 +201,80 @@ def save_progress():
             jsonify({"message": "Weekly progress logged", "id": progress.lastrowid}),
             201,
         )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ==========================================
+# NEWLY APPENDED PROGRESS ANALYTICS ENDPOINTS
+# ==========================================
+
+@app.route("/api/v2.2.1/progress", methods=["GET"])
+def load_progress():
+    ensure_db_initialized()
+    name = request.args.get("name")
+    if not name:
+        return jsonify({"error": "Missing required 'name' filter parameter"}), 400
+
+    try:
+        with get_db_connection() as conn:
+            rows = conn.execute("""
+                SELECT id, week, adherence 
+                FROM progress 
+                WHERE client_name = ? 
+                ORDER BY id ASC
+            """, (name,)).fetchall()
+
+        progress_log = [
+            {"id": row["id"], "week": row["week"], "adherence": row["adherence"]}
+            for row in rows
+        ]
+        return jsonify({"client_name": name, "progress": progress_log}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/v2.2.1/progress/export", methods=["GET"])
+def export_progress():
+    """Generates an on-the-fly streaming RFC-compliant CSV document download."""
+    ensure_db_initialized()
+    name = request.args.get("name")
+    if not name:
+        return jsonify({"error": "Missing required 'name' filter parameter"}), 400
+
+    try:
+        with get_db_connection() as conn:
+            rows = conn.execute("""
+                SELECT week, adherence 
+                FROM progress 
+                WHERE client_name = ? 
+                ORDER BY id ASC
+            """, (name,)).fetchall()
+
+        if not rows:
+            return jsonify({"error": f"No structural timelines logged for {name}"}), 404
+
+        output = io.StringIO()
+        # noinspection PyTypeChecker
+        writer = csv.writer(output, delimiter=",", quoting=csv.QUOTE_MINIMAL)
+
+        # Write CSV Schema Headers
+        writer.writerow(["Client Name", "Week Identifier", "Adherence Percentage"])
+        for row in rows:
+            writer.writerow([name, row["week"], f"{row['adherence']}%"])
+
+        response_stream = output.getvalue()
+        output.close()
+
+        # Build streaming response configuration headers
+        filename = f"{name.lower().replace(' ', '_')}_progress.csv"
+        return Response(
+            response_stream,
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
