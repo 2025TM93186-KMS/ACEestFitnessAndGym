@@ -3,13 +3,13 @@ pipeline {
 
     environment {
         APP_NAME     = 'aceest-fitness-app'
-        APP_VERSION  = '1.1.2'  // BUMPED: Added target release version explicitly
+        APP_VERSION  = '1.1.2'  
         DEV_URL      = "http://localhost:5001"
         TEST_URL     = "http://localhost:5002"
         STAGE_URL    = "http://localhost:5003"
         PROD_URL     = "http://localhost:5004"
 
-        // Dynamic target mapping depending on the current branch name
+        // Dynamic target port mapping depending on the current branch name
         CURRENT_PORT = "${env.BRANCH_NAME == 'Develop' ? '5001' : env.BRANCH_NAME == 'Test' ? '5002' : env.BRANCH_NAME == 'Stage' ? '5003' : '5004'}"
     }
 
@@ -27,24 +27,36 @@ pipeline {
             }
         }
 
-        stage('Docker Compression Assembly') {
+        stage('Python Environment Assembly') {
             steps {
-                echo 'Assembling cached container virtualization blocks on Windows Docker Desktop...'
-                bat "docker build -t %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% ."
+                echo 'Assembling a clean Python virtual environment and installing dependencies on Linux...'
+                // Set up venv and install dependencies natively
+                sh '''
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    pip install --upgrade pip
+                    if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+                '''
             }
         }
 
         stage('Static Lint Analysis') {
             steps {
-                echo 'Validating Python syntax compilation structure inside the Docker Container...'
-                bat "docker run --rm %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% python -m py_compile app.py"
+                echo 'Validating Python syntax compilation structure natively...'
+                sh '''
+                    . venv/bin/activate
+                    python3 -m py_compile app.py
+                '''
             }
         }
 
         stage('Automated Pytest Execution') {
             steps {
-                echo 'Invoking component assertion tests inside clean container context...'
-                bat "docker run --rm %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% pytest test_app.py"
+                echo 'Invoking component assertion tests inside clean virtual environment...'
+                sh '''
+                    . venv/bin/activate
+                    pytest test_app.py
+                '''
             }
         }
 
@@ -52,10 +64,14 @@ pipeline {
             when { branch 'Develop' }
             steps {
                 echo "Deploying to DEV environment at ${env.DEV_URL}..."
-                bat """
-                FOR /F "tokens=*" %%i IN ('docker ps -q --filter "publish=%CURRENT_PORT%"') DO docker stop %%i
-                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-dev-%BUILD_NUMBER% %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
-                """
+                sh '''
+                    # Stop any running process on this port
+                    sudo fuser -k ${CURRENT_PORT}/tcp || true
+                    
+                    # Launch app in background using the local venv python
+                    . venv/bin/activate
+                    nohup python3 app.py --port=${CURRENT_PORT} > dev_app.log 2>&1 &
+                '''
             }
         }
 
@@ -63,10 +79,11 @@ pipeline {
             when { branch 'Test' }
             steps {
                 echo "Deploying to TEST environment at ${env.TEST_URL}..."
-                bat """
-                FOR /F "tokens=*" %%i IN ('docker ps -q --filter "publish=%CURRENT_PORT%"') DO docker stop %%i
-                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-test-%BUILD_NUMBER% %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
-                """
+                sh '''
+                    sudo fuser -k ${CURRENT_PORT}/tcp || true
+                    . venv/bin/activate
+                    nohup python3 app.py --port=${CURRENT_PORT} > test_app.log 2>&1 &
+                '''
             }
         }
 
@@ -74,28 +91,30 @@ pipeline {
             when { branch 'Stage' }
             steps {
                 echo "Deploying to STAGING environment at ${env.STAGE_URL}..."
-                bat """
-                FOR /F "tokens=*" %%i IN ('docker ps -q --filter "publish=%CURRENT_PORT%"') DO docker stop %%i
-                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-stage-%BUILD_NUMBER% %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
-                """
+                sh '''
+                    sudo fuser -k ${CURRENT_PORT}/tcp || true
+                    . venv/bin/activate
+                    nohup python3 app.py --port=${CURRENT_PORT} > stage_app.log 2>&1 &
+                '''
             }
         }
 
         stage('Deploy to Prod') {
-            when { branch 'main' } // Change this to 'Master' if that is your production branch name
+            when { branch 'main' } 
             steps {
                 echo "Deploying to PRODUCTION environment at ${env.PROD_URL}..."
-                bat """
-                FOR /F "tokens=*" %%i IN ('docker ps -q --filter "publish=%CURRENT_PORT%"') DO docker stop %%i
-                docker run -d -p %CURRENT_PORT%:%CURRENT_PORT% --name %APP_NAME%-prod-%BUILD_NUMBER% %APP_NAME%:%APP_VERSION%-%BUILD_NUMBER% python app.py --port=%CURRENT_PORT%
-                """
+                sh '''
+                    sudo fuser -k ${CURRENT_PORT}/tcp || true
+                    . venv/bin/activate
+                    nohup python3 app.py --port=${CURRENT_PORT} > prod_app.log 2>&1 &
+                '''
             }
         }
     }
 
     post {
         always {
-            echo 'Purging Windows working directory allocations to clear file system locking processes.'
+            echo 'Purging working directory allocations to clear file system configurations safely.'
             cleanWs()
         }
         success {
