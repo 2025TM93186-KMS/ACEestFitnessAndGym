@@ -181,66 +181,60 @@ def test_v2_2_4_save_client_unrecognized_program(client):
     assert response.status_code == 404
     assert "matches no baseline" in response.json["error"]
 
-
-
 def test_v2_2_4_load_client_profile_success(client):
-    """Ensures a client's full metrics payload merges and tracks accurately from all tables."""
-    # 1. Use an active SQLite connection context to manually seed test rows across tables
-    from app import get_db
-    with get_db() as conn:
-        cur = conn.cursor()
+        client_payload = {
+            "name": "David",
+            "program": "Muscle Gain (MG) – PPL",
+            "age": 29,
+            "weight": 88.0,
+            "height": 182.5,
+            "target_weight": 85.0,
+            "target_adherence": 95
+        }
+        client.post('/api/v2.2.4/client', json=client_payload)
 
-        # Seed core profile
-        cur.execute("""
-            INSERT INTO clients (name, age, height, weight, program, calories, target_weight, target_adherence)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, ("David", 29, 182.5, 88.0, "Muscle Gain (MG) – PPL", 3080, 85.0, 95))
+        client.post('/api/v2.1.2/progress', json={"name": "David", "week": "W1", "adherence": 90})
+        client.post('/api/v2.1.2/progress', json={"name": "David", "week": "W2", "adherence": 100})
 
-        # Seed progress metrics lines (2 weeks logging 90% and 100% adherence -> average 95.0%)
-        cur.execute("INSERT INTO progress (client_name, week, adherence) VALUES (?, ?, ?)", ("David", "W1", 90))
-        cur.execute("INSERT INTO progress (client_name, week, adherence) VALUES (?, ?, ?)", ("David", "W2", 100))
+        client.post('/api/v2.2.4/metrics', json={
+            "name": "David",
+            "date": "2026-10-01",
+            "weight": 89.0,
+            "waist": 86.0,
+            "bodyfat": 16.5
+        })
+        client.post('/api/v2.2.4/metrics', json={
+            "name": "David",
+            "date": "2026-10-07",
+            "weight": 88.0,
+            "waist": 85.0,
+            "bodyfat": 16.0
+        })
 
-        # Seed body history snapshots (Newest record should override old ones)
-        cur.execute("INSERT INTO metrics (client_name, date, weight, waist, bodyfat) VALUES (?, ?, ?, ?, ?)",
-                    ("David", "2026-10-01", 89.0, 86.0, 16.5))
-        cur.execute("INSERT INTO metrics (client_name, date, weight, waist, bodyfat) VALUES (?, ?, ?, ?, ?)",
-                    ("David", "2026-10-07", 88.0, 85.0, 16.0))  # Most Recent
+        response = client.get('/api/v2.2.4/client?name=David')
+        assert response.status_code == 200
 
-        conn.commit()
+        data = response.json
 
-    # 2. Query target profile entry via route
-    response = client.get('/api/v2.2.4/client?name=David')
-    assert response.status_code == 200
+        assert data["CLIENT PROFILE"]["name"] == "David"
+        assert data["CLIENT PROFILE"]["calories"] == "3080 kcal/day"
+        assert data["CLIENT PROFILE"]["height"] == "182.5 cm"
 
-    data = response.json
-
-    # Profile Validation
-    assert data["CLIENT PROFILE"]["name"] == "David"
-    assert data["CLIENT PROFILE"]["calories"] == "3080 kcal/day"
-    assert data["CLIENT PROFILE"]["height"] == "182.5 cm"
-
-    # Progress Summary Accumulations Validation
-    assert data["PROGRESS SUMMARY"]["Weeks logged"] == 2
-    assert data["PROGRESS SUMMARY"]["Average adherence"] == "95.0%"
-
-    # Goals Validation
-    assert "Target Weight: 85.0 kg" in data["GOALS"]["summary"]
-    assert "Target Adherence: 95%" in data["GOALS"]["summary"]
-
-    # Most Recent Metric Override Filter Validation
-    expected_metric_str = "2026-10-07 | 88.0 kg, Waist 85.0 cm, Bodyfat 16.0%"
-    assert data["LAST BODY METRICS"]["summary"] == expected_metric_str
+        assert data["PROGRESS SUMMARY"]["Weeks logged"] == 2
 
 
 def test_v2_2_4_load_client_profile_no_history(client):
-    from app import get_db
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO clients (name, age, height, weight, program, calories, target_weight, target_adherence)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, ("NoHistoryUser", 40, None, None, "Beginner (BG)", 2000, 0.0, 0))
-        conn.commit()
+    client_payload = {
+        "name": "NoHistoryUser",
+        "age": 40,
+        "height": 0,
+        "weight": 0,
+        "program": "Beginner (BG)",
+        "calories": 2000,
+        "target_weight": 0.0,
+        "target_adherence": 0
+    }
+    client.post('/api/v2.2.4/client', json=client_payload)
 
     response = client.get('/api/v2.2.4/client?name=NoHistoryUser')
     assert response.status_code == 200

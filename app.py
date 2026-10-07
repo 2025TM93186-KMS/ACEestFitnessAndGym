@@ -37,27 +37,29 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 def ensure_db_initialized():
-    """Checks and builds schemas only when invoked inside v2.0.1 data engines."""
-    with get_db_connection() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS clients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                age INTEGER,
-                weight REAL,
-                program TEXT,
-                calories INTEGER
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS progress (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_name TEXT,
-                week TEXT,
-                adherence INTEGER
-            )
-        """)
-        conn.commit()
+    try:
+        with get_db_connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS clients (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE,
+                    age INTEGER,
+                    weight REAL,
+                    program TEXT,
+                    calories INTEGER
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS progress (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_name TEXT,
+                    week TEXT,
+                    adherence INTEGER
+                )
+            """)
+            conn.commit()
+    finally:
+        conn.close()
 
 # ==========================================
 # V2.2.4
@@ -68,104 +70,106 @@ def get_db():
     return conn
 
 def init_db():
-    with get_db() as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='clients'"
-        )
-        exists = cur.fetchone() is not None
-
-        if exists:
-            # Check schema
-            cur.execute("PRAGMA table_info(clients)")
-            cols = [row[1] for row in cur.fetchall()]
-            required = {
-                "id",
-                "name",
-                "age",
-                "height",
-                "weight",
-                "program",
-                "calories",
-                "target_weight",
-                "target_adherence",
-            }
-            if not required.issubset(set(cols)):
-                # Drop and recreate with full schema
-                cur.execute("DROP TABLE clients")
-
-        # Create clients with full schema
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS clients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                age INTEGER,
-                height REAL,
-                weight REAL,
-                program TEXT,
-                calories INTEGER,
-                target_weight REAL,
-                target_adherence INTEGER
+    try:
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='clients'"
             )
-            """
-        )
+            exists = cur.fetchone() is not None
 
-        # Weekly adherence
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS progress (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_name TEXT,
-                week TEXT,
-                adherence INTEGER
+            if exists:
+                # Check schema
+                cur.execute("PRAGMA table_info(clients)")
+                cols = [row[1] for row in cur.fetchall()]
+                required = {
+                    "id",
+                    "name",
+                    "age",
+                    "height",
+                    "weight",
+                    "program",
+                    "calories",
+                    "target_weight",
+                    "target_adherence",
+                }
+                if not required.issubset(set(cols)):
+                    # Drop and recreate with full schema
+                    cur.execute("DROP TABLE clients")
+
+            # Create clients with full schema
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS clients (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE,
+                    age INTEGER,
+                    height REAL,
+                    weight REAL,
+                    program TEXT,
+                    calories INTEGER,
+                    target_weight REAL,
+                    target_adherence INTEGER
+                )
+                """
             )
-            """
-        )
 
-        # Workouts (session-level)
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS workouts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_name TEXT,
-                date TEXT,
-                workout_type TEXT,
-                duration_min INTEGER,
-                notes TEXT
+            # Weekly adherence
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS progress (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_name TEXT,
+                    week TEXT,
+                    adherence INTEGER
+                )
+                """
             )
-            """
-        )
 
-        # Exercises (per workout)
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS exercises (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                workout_id INTEGER,
-                name TEXT,
-                sets INTEGER,
-                reps INTEGER,
-                weight REAL
+            # Workouts (session-level)
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS workouts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_name TEXT,
+                    date TEXT,
+                    workout_type TEXT,
+                    duration_min INTEGER,
+                    notes TEXT
+                )
+                """
             )
-            """
-        )
 
-        # Body metrics (weight, waist, etc.)
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS metrics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_name TEXT,
-                date TEXT,
-                weight REAL,
-                waist REAL,
-                bodyfat REAL
+            # Exercises (per workout)
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS exercises (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workout_id INTEGER,
+                    name TEXT,
+                    sets INTEGER,
+                    reps INTEGER,
+                    weight REAL
+                )
+                """
             )
-            """
-        )
 
-        conn.commit()
+            # Body metrics (weight, waist, etc.)
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_name TEXT,
+                    date TEXT,
+                    weight REAL,
+                    waist REAL,
+                    bodyfat REAL
+                )
+                """
+            )
+            conn.commit()
+    finally:
+        conn.close()
 
 # Ensure schema validation vectors fire immediately at application launch
 init_db()
