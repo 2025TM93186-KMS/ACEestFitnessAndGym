@@ -25,6 +25,7 @@ def client(monkeypatch):
     with app.test_client() as client:
         yield client
 
+# region V2.1.2 & V2.2.1
 def test_health_check(client):
     response = client.get('/api/v2.1.2/health')
     assert response.status_code == 200
@@ -76,7 +77,6 @@ def test_v2_1_2_load_client_not_found(client):
     assert response.status_code == 404
     assert "not found" in response.json["error"]
 
-
 def test_v2_1_2_save_progress_success(client):
     payload = {
         "name": "Marcus",
@@ -85,6 +85,10 @@ def test_v2_1_2_save_progress_success(client):
     response = client.post('/api/v2.1.2/progress', json=payload)
     assert response.status_code == 201
     assert "Weekly progress logged" in response.json["message"]
+
+# endregion
+
+# region V2.2.1
 
 # ==============================================================================
 # NEWLY APPENDED TESTS FOR : v2.2.1
@@ -123,3 +127,142 @@ def test_v2_2_1_export_progress_client_not_found(client):
     response = client.get('/api/v2.2.1/progress/export?name=UnknownUser')
     assert response.status_code == 404
     assert "No structural timelines logged for UnknownUser" in response.json["error"]
+
+# endregion
+
+# region V2.2.4
+
+# ==============================================================================
+# NEWLY APPENDED TESTS FOR : v2.2.4
+# ==============================================================================
+
+def test_v2_2_4_health_check(client):
+    response = client.get('/api/v2.2.4/health')
+    assert response.status_code == 200
+    assert response.json['status'] == "healthy"
+    assert "V2.2.4 Backend" in response.json['service']
+
+
+def test_v2_2_4_save_client_success(client):
+    payload = {
+        "name": "Alex",
+        "program": "Fat Loss (FL) – 5 day",
+        "age": 25,
+        "weight": 90.0,
+        "height": 180.0,
+        "target_weight": 80.0,
+        "target_adherence": 90
+    }
+    response = client.post('/api/v2.2.4/client', json=payload)
+    assert response.status_code == 200
+    assert "Client data saved" in response.json["message"]
+    # 90.0 weight * 24 factor = 2160 calories expected
+    assert response.json["calories"] == 2160
+    assert "id" in response.json
+
+
+def test_v2_2_4_save_client_validation_missing_fields(client):
+    payload = {
+        "name": "Incomplete Profile"
+        # 'program' parameter is missing
+    }
+    response = client.post('/api/v2.2.4/client', json=payload)
+    assert response.status_code == 400
+    assert "Name and Program fields are required" in response.json["error"]
+
+
+def test_v2_2_4_save_client_unrecognized_program(client):
+    payload = {
+        "name": "Invalid Program User",
+        "program": "Hyper-Bulk 6 Day Split",
+        "weight": 75.0
+    }
+    response = client.post('/api/v2.2.4/client', json=payload)
+    assert response.status_code == 404
+    assert "matches no baseline" in response.json["error"]
+
+
+
+def test_v2_2_4_load_client_profile_success(client):
+    """Ensures a client's full metrics payload merges and tracks accurately from all tables."""
+    # 1. Use an active SQLite connection context to manually seed test rows across tables
+    from app import get_db
+    with get_db() as conn:
+        cur = conn.cursor()
+
+        # Seed core profile
+        cur.execute("""
+            INSERT INTO clients (name, age, height, weight, program, calories, target_weight, target_adherence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, ("David", 29, 182.5, 88.0, "Muscle Gain (MG) – PPL", 3080, 85.0, 95))
+
+        # Seed progress metrics lines (2 weeks logging 90% and 100% adherence -> average 95.0%)
+        cur.execute("INSERT INTO progress (client_name, week, adherence) VALUES (?, ?, ?)", ("David", "W1", 90))
+        cur.execute("INSERT INTO progress (client_name, week, adherence) VALUES (?, ?, ?)", ("David", "W2", 100))
+
+        # Seed body history snapshots (Newest record should override old ones)
+        cur.execute("INSERT INTO metrics (client_name, date, weight, waist, bodyfat) VALUES (?, ?, ?, ?, ?)",
+                    ("David", "2026-10-01", 89.0, 86.0, 16.5))
+        cur.execute("INSERT INTO metrics (client_name, date, weight, waist, bodyfat) VALUES (?, ?, ?, ?, ?)",
+                    ("David", "2026-10-07", 88.0, 85.0, 16.0))  # Most Recent
+
+        conn.commit()
+
+    # 2. Query target profile entry via route
+    response = client.get('/api/v2.2.4/client?name=David')
+    assert response.status_code == 200
+
+    data = response.json
+
+    # Profile Validation
+    assert data["CLIENT PROFILE"]["name"] == "David"
+    assert data["CLIENT PROFILE"]["calories"] == "3080 kcal/day"
+    assert data["CLIENT PROFILE"]["height"] == "182.5 cm"
+
+    # Progress Summary Accumulations Validation
+    assert data["PROGRESS SUMMARY"]["Weeks logged"] == 2
+    assert data["PROGRESS SUMMARY"]["Average adherence"] == "95.0%"
+
+    # Goals Validation
+    assert "Target Weight: 85.0 kg" in data["GOALS"]["summary"]
+    assert "Target Adherence: 95%" in data["GOALS"]["summary"]
+
+    # Most Recent Metric Override Filter Validation
+    expected_metric_str = "2026-10-07 | 88.0 kg, Waist 85.0 cm, Bodyfat 16.0%"
+    assert data["LAST BODY METRICS"]["summary"] == expected_metric_str
+
+
+def test_v2_2_4_load_client_profile_no_history(client):
+    from app import get_db
+    with get_db() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO clients (name, age, height, weight, program, calories, target_weight, target_adherence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, ("NoHistoryUser", 40, None, None, "Beginner (BG)", 2000, 0.0, 0))
+        conn.commit()
+
+    response = client.get('/api/v2.2.4/client?name=NoHistoryUser')
+    assert response.status_code == 200
+
+    data = response.json
+    assert data["CLIENT PROFILE"]["height"] == "-"
+    assert data["CLIENT PROFILE"]["weight"] == "-"
+    assert data["GOALS"]["summary"] == "None"
+    assert data["LAST BODY METRICS"]["summary"] == "None"
+    assert data["PROGRESS SUMMARY"]["Weeks logged"] == 0
+    assert data["PROGRESS SUMMARY"]["Average adherence"] == "0%"
+
+
+def test_v2_2_4_load_client_missing_name_param(client):
+    response = client.get('/api/v2.2.4/client')
+    assert response.status_code == 400
+    assert response.json["error"] == "Missing 'name' query parameter"
+
+
+def test_v2_2_4_load_client_not_found(client):
+    response = client.get('/api/v2.2.4/client?name=MissingClient')
+    assert response.status_code == 404
+    assert response.json["error"] == "Client not found"
+
+# endregion
