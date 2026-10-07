@@ -25,82 +25,31 @@ def client(monkeypatch):
     with app.test_client() as client:
         yield client
 
-# region V2.1.2 & V2.2.1
+# region V3.0.1
 def test_health_check(client):
-    response = client.get('/api/v2.1.2/health')
+    response = client.get('/api/v3.0.1/health')
     assert response.status_code == 200
-    assert "V2.1.2 Backend" in response.json['service']
+    assert response.json['status'] == "healthy"
+    assert "V3.0.1 Backend" in response.json['service']
 
 
-# ==============================================================================
-# V2.1.2 CORE DATABASE INTEGRATION TESTS (AUTO-INITIALIZATION LIFE CYCLE)
-# ==============================================================================
-
-def test_v2_1_2_save_client_success(client):
-    """Ensure validation records parse and commit to disk storage handles."""
-    payload = {
-        "name": "Marcus",
-        "program": "Muscle Gain (MG)",
-        "age": 30,
-        "weight": 85.5
-    }
-    response = client.post('/api/v2.1.2/client', json=payload)
-    assert response.status_code == 200
-    assert "Client data saved" in response.json["message"]
-    assert response.json["calories"] == int(85.5 * 35)
-
-
-def test_v2_1_2_save_client_validation_missing_fields(client):
-    """Checks for 400 status parameters if required registration keys are missing."""
-    payload = {"name": "", "program": "Fat Loss (FL)"}
-    response = client.post('/api/v2.1.2/client', json=payload)
-    assert response.status_code == 400
-    assert "fields are required" in response.json["error"]
-
-
-def test_v2_1_2_load_client_success(client):
-    # Seed data
-    payload = {"name": "Jane", "program": "Fat Loss (FL)", "age": 28, "weight": 60.0}
-    client.post('/api/v2.1.2/client', json=payload)
-
-    # Attempt query fetch
-    response = client.get('/api/v2.1.2/client?name=Jane')
-    assert response.status_code == 200
-    assert response.json["name"] == "Jane"
-    assert response.json["program"] == "Fat Loss (FL)"
-    assert response.json["calories"] == int(60.0 * 22)
-
-
-def test_v2_1_2_load_client_not_found(client):
-    """Verifies targeted missing entries with 404."""
-    response = client.get('/api/v2.1.2/client?name=GhostUser')
-    assert response.status_code == 404
-    assert "not found" in response.json["error"]
-
-def test_v2_1_2_save_progress_success(client):
+def test_save_progress_success(client):
     payload = {
         "name": "Marcus",
         "adherence": 90
     }
-    response = client.post('/api/v2.1.2/progress', json=payload)
+    response = client.post('/api/v3.0.1/progress', json=payload)
     assert response.status_code == 201
     assert "Weekly progress logged" in response.json["message"]
 
-# endregion
 
-# region V2.2.1
-
-# ==============================================================================
-# NEWLY APPENDED TESTS FOR : v2.2.1
-# ==============================================================================
-
-def test_v2_2_1_export_progress_success(client):
+def test_export_progress_success(client):
     # Seed progress tracking history lines for the query context
     payload = {"name": "Jane", "adherence": 85}
-    client.post('/api/v2.1.2/progress', json=payload)
+    client.post('/api/v3.0.1/progress', json=payload)
 
     # Execute endpoint fetch download stream
-    response = client.get('/api/v2.2.1/progress/export?name=Jane')
+    response = client.get('/api/v3.0.1/progress/export?name=Jane')
     assert response.status_code == 200
     assert "text/csv" in response.headers["Content-Type"]
     assert "attachment" in response.headers["Content-Disposition"]
@@ -117,33 +66,18 @@ def test_v2_2_1_export_progress_success(client):
     assert rows[1][2] == "85%"
 
 
-def test_v2_2_1_export_progress_missing_name_param(client):
-    response = client.get('/api/v2.2.1/progress/export')
+def test_export_progress_missing_name_param(client):
+    response = client.get('/api/v3.0.1/progress/export')
     assert response.status_code == 400
     assert "Missing required 'name' filter parameter" in response.json["error"]
 
 
-def test_v2_2_1_export_progress_client_not_found(client):
-    response = client.get('/api/v2.2.1/progress/export?name=UnknownUser')
+def test_export_progress_client_not_found(client):
+    response = client.get('/api/v3.0.1/progress/export?name=UnknownUser')
     assert response.status_code == 404
     assert "No structural timelines logged for UnknownUser" in response.json["error"]
 
-# endregion
-
-# region V2.2.4
-
-# ==============================================================================
-# NEWLY APPENDED TESTS FOR : v2.2.4
-# ==============================================================================
-
-def test_v2_2_4_health_check(client):
-    response = client.get('/api/v2.2.4/health')
-    assert response.status_code == 200
-    assert response.json['status'] == "healthy"
-    assert "V2.2.4 Backend" in response.json['service']
-
-
-def test_v2_2_4_save_client_success(client):
+def test_save_client_success(client):
     payload = {
         "name": "Alex",
         "program": "Fat Loss (FL) – 5 day",
@@ -153,7 +87,7 @@ def test_v2_2_4_save_client_success(client):
         "target_weight": 80.0,
         "target_adherence": 90
     }
-    response = client.post('/api/v2.2.4/client', json=payload)
+    response = client.post('/api/v3.0.1/client', json=payload)
     assert response.status_code == 200
     assert "Client data saved" in response.json["message"]
     # 90.0 weight * 24 factor = 2160 calories expected
@@ -161,27 +95,27 @@ def test_v2_2_4_save_client_success(client):
     assert "id" in response.json
 
 
-def test_v2_2_4_save_client_validation_missing_fields(client):
+def test_save_client_validation_missing_fields(client):
     payload = {
         "name": "Incomplete Profile"
         # 'program' parameter is missing
     }
-    response = client.post('/api/v2.2.4/client', json=payload)
+    response = client.post('/api/v3.0.1/client', json=payload)
     assert response.status_code == 400
     assert "Name and Program fields are required" in response.json["error"]
 
 
-def test_v2_2_4_save_client_unrecognized_program(client):
+def test_save_client_unrecognized_program(client):
     payload = {
         "name": "Invalid Program User",
         "program": "Hyper-Bulk 6 Day Split",
         "weight": 75.0
     }
-    response = client.post('/api/v2.2.4/client', json=payload)
+    response = client.post('/api/v3.0.1/client', json=payload)
     assert response.status_code == 404
     assert "matches no baseline" in response.json["error"]
 
-def test_v2_2_4_load_client_profile_success(client):
+def test_load_client_profile_success(client):
         client_payload = {
             "name": "David",
             "program": "Muscle Gain (MG) – PPL",
@@ -191,19 +125,19 @@ def test_v2_2_4_load_client_profile_success(client):
             "target_weight": 85.0,
             "target_adherence": 95
         }
-        client.post('/api/v2.2.4/client', json=client_payload)
+        client.post('/api/v3.0.1/client', json=client_payload)
 
-        client.post('/api/v2.1.2/progress', json={"name": "David", "week": "W1", "adherence": 90})
-        client.post('/api/v2.1.2/progress', json={"name": "David", "week": "W2", "adherence": 100})
+        client.post('/api/v3.0.1/progress', json={"name": "David", "week": "W1", "adherence": 90})
+        client.post('/api/v3.0.1/progress', json={"name": "David", "week": "W2", "adherence": 100})
 
-        client.post('/api/v2.2.4/metrics', json={
+        client.post('/api/v3.0.1/metrics', json={
             "name": "David",
             "date": "2026-10-01",
             "weight": 89.0,
             "waist": 86.0,
             "bodyfat": 16.5
         })
-        client.post('/api/v2.2.4/metrics', json={
+        client.post('/api/v3.0.1/metrics', json={
             "name": "David",
             "date": "2026-10-07",
             "weight": 88.0,
@@ -211,7 +145,7 @@ def test_v2_2_4_load_client_profile_success(client):
             "bodyfat": 16.0
         })
 
-        response = client.get('/api/v2.2.4/client?name=David')
+        response = client.get('/api/v3.0.1/client?name=David')
         assert response.status_code == 200
 
         data = response.json
@@ -223,7 +157,7 @@ def test_v2_2_4_load_client_profile_success(client):
         assert data["PROGRESS SUMMARY"]["Weeks logged"] == 2
 
 
-def test_v2_2_4_load_client_profile_no_history(client):
+def test_load_client_profile_no_history(client):
     client_payload = {
         "name": "NoHistoryUser",
         "age": 40,
@@ -234,9 +168,9 @@ def test_v2_2_4_load_client_profile_no_history(client):
         "target_weight": 0.0,
         "target_adherence": 0
     }
-    client.post('/api/v2.2.4/client', json=client_payload)
+    client.post('/api/v3.0.1/client', json=client_payload)
 
-    response = client.get('/api/v2.2.4/client?name=NoHistoryUser')
+    response = client.get('/api/v3.0.1/client?name=NoHistoryUser')
     assert response.status_code == 200
 
     data = response.json
@@ -248,14 +182,14 @@ def test_v2_2_4_load_client_profile_no_history(client):
     assert data["PROGRESS SUMMARY"]["Average adherence"] == "0%"
 
 
-def test_v2_2_4_load_client_missing_name_param(client):
-    response = client.get('/api/v2.2.4/client')
+def test_load_client_missing_name_param(client):
+    response = client.get('/api/v3.0.1/client')
     assert response.status_code == 400
     assert response.json["error"] == "Missing 'name' query parameter"
 
 
-def test_v2_2_4_load_client_not_found(client):
-    response = client.get('/api/v2.2.4/client?name=MissingClient')
+def test_load_client_not_found(client):
+    response = client.get('/api/v3.0.1/client?name=MissingClient')
     assert response.status_code == 404
     assert response.json["error"] == "Client not found"
 

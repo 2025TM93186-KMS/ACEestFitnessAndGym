@@ -12,16 +12,9 @@ CORS(app)  # Eliminates Cross-Origin blocking parameters for client integrations
 
 DB_NAME = "aceest_fitness.db"
 
-# region V2.1.2
-PROGRAMS_v2_2_1 = {
-"Fat Loss (FL)": {"factor": 22},
-            "Muscle Gain (MG)": {"factor": 35},
-            "Beginner (BG)": {"factor": 26}
-}
-PROGRAMS_LOWER_v2_2_1 = {k.lower(): v for k, v in PROGRAMS_v2_2_1.items()}
-# endregion
-
-#v2.2.4
+# ==========================================
+# V3.0.1
+# ==========================================
 PROGRAMS = {
             "Fat Loss (FL) – 3 day": {"factor": 22, "desc": "3-day full-body fat loss"},
             "Fat Loss (FL) – 5 day": {"factor": 24, "desc": "5-day split, higher volume fat loss"},
@@ -31,39 +24,6 @@ PROGRAMS = {
 PROGRAMS_LOWER = {k.lower(): v for k, v in PROGRAMS.items()}
 
 
-# ---------- DATABASE LOGIC (ISOLATED LAZY LOADING) ----------
-def get_db_connection():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    return conn
-def ensure_db_initialized():
-    try:
-        with get_db_connection() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS clients (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT UNIQUE,
-                    age INTEGER,
-                    weight REAL,
-                    program TEXT,
-                    calories INTEGER
-                )
-            """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS progress (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    client_name TEXT,
-                    week TEXT,
-                    adherence INTEGER
-                )
-            """)
-            conn.commit()
-    finally:
-        conn.close()
-
-# ==========================================
-# V2.2.4
-# ==========================================
 def get_db():
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
@@ -171,254 +131,45 @@ def init_db():
     finally:
         conn.close()
 
-# Ensure schema validation vectors fire immediately at application launch
 init_db()
-@app.route("/api/v2.2.4", methods=["GET"])
+@app.route("/api/v3.0.1", methods=["GET"])
 def api_root():
     return jsonify({
-        "version": "2.2.4",
+        "version": "3.0.1",
         "status": "active",
         "service": "ACEest Fitness Foundation Engine",
         "available_endpoints": {
-            "health_2_1_2": "GET /api/v2.1.2/health",
-            "save_client": "POST /api/v2.1.2/client",
-            "load_client": "GET /api/v2.1.2/client",
-            "save_progress": "POST /api/v2.1.2/progress",
-            "health_2_2_1": "GET /api/v2.2.1/health",
-            "load_progress": "GET /api/v2.2.1/progress",
-            "export_progress":"GET /api/v2.2.1/progress/export",
-            "health": "GET /api/v2.2.4/health",
-            "save_client_v2_2_4": "POST /api/v2.2.4/client",
-            "load_client_v2_2_4": "GET /api/v2.2.4/client",
-            "show_weight_chart": "GET /api/v2.2.4/weight",
-            "show_bmi_info": "GET /api/v2.2.4/bmi",
-            "save_workout": "POST /api/v2.2.4/workout",
-            "save_metrics": "POST /api/v2.2.4/metrics",
-            "workout_history": "GET /api/v2.2.4/workout",
+            "health": "GET /api/v3.0.1/health",
+            "save_progress": "POST /api/v3.0.1/progress",
+            "load_progress": "GET /api/v3.0.1/progress",
+            "export_progress":"GET /api/v3.0.1/progress/export",
+            "save_client": "POST /api/v3.0.1/client",
+            "load_client": "GET /api/v3.0.1/client",
+            "show_weight_chart": "GET /api/v3.0.1/weight",
+            "show_bmi_info": "GET /api/v3.0.1/bmi",
+            "save_workout": "POST /api/v3.0.1/workout",
+            "save_metrics": "POST /api/v3.0.1/metrics",
+            "workout_history": "GET /api/v3.0.1/workout",
         }
     }), 200
 
-# region V2.1.2
+# region V3.0.1
 # ==========================================
-# FINAL REFINED ENDPOINTS OF v2 : V2.1.2
+# V3.0.1
 # ==========================================
-"""Health Check V2.1.2"""
-@app.route("/api/v2.1.2/health", methods=["GET"])
-def health_check_2_1_2():
-    return (
-        jsonify(
-            {
-                "status": "healthy",
-                "service": "ACEest Fitness API V2.1.2 Backend",
-            }
-        ),
-        200,
-    )
-@app.route("/api/v2.2.1/health", methods=["GET"])
-def health_check_v2_2_1():
-    return (
-        jsonify(
-            {
-                "status": "healthy",
-                "service": "ACEest Fitness API V2.2.1 Backend",
-            }
-        ),
-        200,
-    )
-@app.route("/api/v2.1.2/client", methods=["POST"])
-@app.route("/api/v2.2.1/client", methods=["POST"])
-def save_client():
-    ensure_db_initialized()  # Auto-creates tables seamlessly if missing
-    data = request.json or {}
-    name = data.get("name")
-    program = data.get("program")
-
-    if not name or not program:
-        return jsonify({"error": "Name and Program fields are required"}), 400
-
-    try:
-        age = int(data.get("age", 0))
-        weight = float(data.get("weight", 0.0))
-    except (ValueError, TypeError):
-        return (
-            jsonify({"error": "Invalid format for age or numerical weight"}),
-            400,
-        )
-
-    program_details = PROGRAMS_LOWER_v2_2_1.get(program.lower())
-    if not program_details:
-        return jsonify({"error": f"Program '{program}' matches no baseline"}), 404
-
-    calories = int(weight * program_details["factor"])
-
-    try:
-        with get_db_connection() as conn:
-            client = conn.execute(
-                """
-                INSERT OR REPLACE INTO clients (name, age, weight, program, calories)
-                VALUES (?, ?, ?, ?, ?)
-            """,
-                (name, age, weight, program, calories),
-            )
-            conn.commit()
-        return (
-            jsonify({"message": "Client data saved", "id":client.lastrowid, "calories": calories}),
-            200,
-        )
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-@app.route("/api/v2.1.2/client", methods=["GET"])
-@app.route("/api/v2.2.1/client", methods=["GET"])
-def load_client():
-    ensure_db_initialized()  # Auto-creates tables seamlessly if missing
-    name = request.args.get("name")
-    if not name:
-        return jsonify({"error": "Missing 'name' query parameter"}), 400
-
-    try:
-        with get_db_connection() as conn:
-            row = conn.execute(
-                "SELECT * FROM clients WHERE name = ?", (name,)
-            ).fetchone()
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    if not row:
-        return jsonify({"error": "Client not found"}), 404
-
-    return (
-        jsonify(
-            {
-                "id": row["id"],
-                "name": row["name"],
-                "age": row["age"],
-                "weight": row["weight"],
-                "program": row["program"],
-                "calories": row["calories"],
-            }
-        ),
-        200,
-    )
-@app.route("/api/v2.1.2/progress", methods=["POST"])
-@app.route("/api/v2.2.1/progress", methods=["POST"])
-def save_progress():
-    ensure_db_initialized()  # Auto-creates tables seamlessly if missing
-    data = request.json or {}
-    name = data.get("name")
-
-    if not name:
-        return jsonify({"error": "Target client 'name' property required"}), 400
-
-    try:
-        adherence = int(data.get("adherence", 0))
-    except (ValueError, TypeError):
-        return jsonify({"error": "Adherence configuration must be numerical"}), 400
-
-    week_stamp = datetime.now().strftime("Week %U - %Y")
-
-    try:
-        with get_db_connection() as conn:
-            progress = conn.execute(
-                """
-                INSERT INTO progress (client_name, week, adherence)
-                VALUES (?, ?, ?)
-            """,
-                (name, week_stamp, adherence),
-            )
-            conn.commit()
-        return (
-            jsonify({"message": "Weekly progress logged", "id": progress.lastrowid}),
-            201,
-        )
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-# PROGRESS ANALYTICS ENDPOINTS
-@app.route("/api/v2.2.1/progress", methods=["GET"])
-def load_progress():
-    ensure_db_initialized()
-    name = request.args.get("name")
-    if not name:
-        return jsonify({"error": "Missing required 'name' filter parameter"}), 400
-
-    try:
-        with get_db_connection() as conn:
-            rows = conn.execute("""
-                SELECT id, week, adherence 
-                FROM progress 
-                WHERE client_name = ? 
-                ORDER BY id ASC
-            """, (name,)).fetchall()
-
-        progress_log = [
-            {"id": row["id"], "week": row["week"], "adherence": row["adherence"]}
-            for row in rows
-        ]
-        return jsonify({"client_name": name, "progress": progress_log}), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-@app.route("/api/v2.2.1/progress/export", methods=["GET"])
-def export_progress():
-    """Generates an on-the-fly streaming RFC-compliant CSV document download."""
-    ensure_db_initialized()
-    name = request.args.get("name")
-    if not name:
-        return jsonify({"error": "Missing required 'name' filter parameter"}), 400
-
-    try:
-        with get_db_connection() as conn:
-            rows = conn.execute("""
-                SELECT week, adherence 
-                FROM progress 
-                WHERE client_name = ? 
-                ORDER BY id ASC
-            """, (name,)).fetchall()
-
-        if not rows:
-            return jsonify({"error": f"No structural timelines logged for {name}"}), 404
-
-        output = io.StringIO()
-        # noinspection PyTypeChecker
-        writer = csv.writer(output, delimiter=",", quoting=csv.QUOTE_MINIMAL)
-
-        # Write CSV Schema Headers
-        writer.writerow(["Client Name", "Week Identifier", "Adherence Percentage"])
-        for row in rows:
-            writer.writerow([name, row["week"], f"{row['adherence']}%"])
-
-        response_stream = output.getvalue()
-        output.close()
-
-        # Build streaming response configuration headers
-        filename = f"{name.lower().replace(' ', '_')}_progress.csv"
-        return Response(
-            response_stream,
-            mimetype="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-# endregion
-
-# region V2.2.4
-# ==========================================
-# V2.2.4
-# ==========================================
-@app.route("/api/v2.2.4/health", methods=["GET"])
+@app.route("/api/v3.0.1/health", methods=["GET"])
 def health_check():
     return (
         jsonify(
             {
                 "status": "healthy",
-                "service": "ACEest Fitness API V2.2.4 Backend",
+                "service": "ACEest Fitness API V3.0.1 Backend",
             }
         ),
         200,
     )
-
-@app.route("/api/v2.2.4/client", methods=["POST"])
-def save_client_v2_2_4():
+@app.route("/api/v3.0.1/client", methods=["POST"])
+def save_client():
         try:
             data = request.json or {}
             name = data.get("name")
@@ -470,9 +221,8 @@ def save_client_v2_2_4():
                 )
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-
-@app.route("/api/v2.2.4/client", methods=["GET"])
-def load_client_v2_2_4():
+@app.route("/api/v3.0.1/client", methods=["GET"])
+def load_client():
     try:
         name = request.args.get("name")
         if not name:
@@ -548,8 +298,90 @@ def load_client_v2_2_4():
             }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@app.route("/api/v3.0.1/progress", methods=["POST"])
+def save_progress():
+    try:
+        data = request.json or {}
+        name = data.get("name")
+        if not name:
+            return jsonify({"error": "Target client 'name' property required"}), 400
+        adherence = int(data.get("adherence", 0))
+        week_stamp = datetime.now().strftime("Week %U - %Y")
+        init_db()
+        with get_db() as conn:
+            progress = conn.execute(
+                """
+                INSERT INTO progress (client_name, week, adherence)
+                VALUES (?, ?, ?)
+            """,
+                (name, week_stamp, adherence),
+            )
+            conn.commit()
+        return (
+            jsonify({"message": "Weekly progress logged", "id": progress.lastrowid}),
+            201,
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+@app.route("/api/v3.0.1/progress", methods=["GET"])
+def load_progress():
+    try:
+        name = request.args.get("name")
+        if not name:
+            return jsonify({"error": "Missing required 'name' filter parameter"}), 400
+        init_db()
+        with get_db() as conn:
+            rows = conn.execute("""
+                SELECT id, week, adherence 
+                FROM progress 
+                WHERE client_name = ? 
+                ORDER BY id ASC
+            """, (name,)).fetchall()
+            progress_log = [
+                {"id": row["id"], "week": row["week"], "adherence": row["adherence"]}
+                for row in rows
+            ]
+            return jsonify({"client_name": name, "progress": progress_log}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+@app.route("/api/v3.0.1/progress/export", methods=["GET"])
+def export_progress():
+    try:
+        name = request.args.get("name")
+        if not name:
+            return jsonify({"error": "Missing required 'name' filter parameter"}), 400
+        init_db()
+        with get_db() as conn:
+            rows = conn.execute("""
+                SELECT week, adherence 
+                FROM progress 
+                WHERE client_name = ? 
+                ORDER BY id ASC
+            """, (name,)).fetchall()
+            if not rows:
+                return jsonify({"error": f"No structural timelines logged for {name}"}), 404
+            output = io.StringIO()
+            # noinspection PyTypeChecker
+            writer = csv.writer(output, delimiter=",", quoting=csv.QUOTE_MINIMAL)
 
-@app.route("/api/v2.2.4/weight", methods=["GET"])
+            # Write CSV Schema Headers
+            writer.writerow(["Client Name", "Week Identifier", "Adherence Percentage"])
+            for row in rows:
+                writer.writerow([name, row["week"], f"{row['adherence']}%"])
+
+            response_stream = output.getvalue()
+            output.close()
+
+            # Build streaming response configuration headers
+            filename = f"{name.lower().replace(' ', '_')}_progress.csv"
+            return Response(
+                response_stream,
+                mimetype="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+@app.route("/api/v3.0.1/weight", methods=["GET"])
 def show_weight_chart():
     try:
         name = request.args.get("name")
@@ -575,8 +407,7 @@ def show_weight_chart():
             return jsonify({"client_name": name, "weight_chart": data}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-@app.route("/api/v2.2.4/bmi", methods=["GET"])
+@app.route("/api/v3.0.1/bmi", methods=["GET"])
 def show_bmi_info():
     try:
         name = request.args.get("name")
@@ -616,8 +447,38 @@ def show_bmi_info():
             }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@app.route("/api/v3.0.1/metrics", methods=["POST"])
+def save_metrics():
+        try:
+            data = request.json or {}
+            name = data.get("name")
+            if not name or not data.get("date"):
+                return jsonify({"error": "Name and Date fields are required"}), 400
 
-@app.route("/api/v2.2.4/workout", methods=["POST"])
+            date_str = data.get("date", datetime.now().strftime("%Y-%m-%d"))
+            m_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            m_weight = float(data.get("weight", 0.0))
+            m_waist = float(data.get("waist", 0.0))
+            m_bf = float(data.get("body_fat", 0.0))
+
+            init_db()
+            with get_db() as conn:
+                cur = conn.cursor()
+                metrics = cur.execute(
+                    """
+                    INSERT INTO metrics (client_name, date, weight, waist, bodyfat)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (name, m_date, m_weight, m_waist, m_bf),
+                )
+                conn.commit()
+            return (
+                jsonify({"message": "Metrics logged successfully", "id": metrics.lastrowid}),
+                200,
+            )
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+@app.route("/api/v3.0.1/workout", methods=["POST"])
 def save_workout():
         try:
             data = request.json or {}
@@ -668,40 +529,7 @@ def save_workout():
                 )
         except Exception as e:
             return jsonify({"error": str(e)}), 500
-
-@app.route("/api/v2.2.4/metrics", methods=["POST"])
-def save_metrics():
-        try:
-            data = request.json or {}
-            name = data.get("name")
-            if not name or not data.get("date"):
-                return jsonify({"error": "Name and Date fields are required"}), 400
-
-            date_str = data.get("date", datetime.now().strftime("%Y-%m-%d"))
-            m_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            m_weight = float(data.get("weight", 0.0))
-            m_waist = float(data.get("waist", 0.0))
-            m_bf = float(data.get("body_fat", 0.0))
-
-            init_db()
-            with get_db() as conn:
-                cur = conn.cursor()
-                metrics = cur.execute(
-                    """
-                    INSERT INTO metrics (client_name, date, weight, waist, bodyfat)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (name, m_date, m_weight, m_waist, m_bf),
-                )
-                conn.commit()
-            return (
-                jsonify({"message": "Metrics logged successfully", "id": metrics.lastrowid}),
-                200,
-            )
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
-@app.route("/api/v2.2.4/workout", methods=["GET"])
+@app.route("/api/v3.0.1/workout", methods=["GET"])
 def workout_history():
     try:
         name = request.args.get("name")
