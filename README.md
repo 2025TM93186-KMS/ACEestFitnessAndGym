@@ -17,3 +17,5 @@ Aceestver-2.2.4 : Ver-2.2.4
 Aceestver-3.0.1 : Ver-3.0.1
 
 Aceestver-3.1.2 : Ver-3.1.2
+
+Aceestver-3.2.4 : Ver-3.2.4
