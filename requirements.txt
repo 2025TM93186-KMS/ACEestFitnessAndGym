@@ -2,3 +2,5 @@ Flask==3.0.3
 pytest==8.2.2
 flask-cors==4.0.1
 fpdf2
+
+
