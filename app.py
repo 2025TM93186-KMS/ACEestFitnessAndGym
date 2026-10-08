@@ -26,6 +26,13 @@ PROGRAMS = {
         }
 PROGRAMS_LOWER = {k.lower(): v for k, v in PROGRAMS.items()}
 
+# Programs for AI-style generation
+program_templates = {
+            "Fat Loss": ["Full Body HIIT", "Circuit Training", "Cardio + Weights"],
+            "Muscle Gain": ["Push/Pull/Legs", "Upper/Lower Split", "Full Body Strength"],
+            "Beginner": ["Full Body 3x/week", "Light Strength + Mobility"]
+        }
+
 
 def get_db():
     conn = sqlite3.connect(DB_NAME)
@@ -809,6 +816,102 @@ def export_pdf_report():
         return jsonify({"message": f"Report saved as {name}_report.pdf"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+# endregion
+
+# region V3.2.4
+@app.route("/api/v3.2.4/client", methods=["POST"])
+def save_client_v3_2_4():
+    try:
+        data = request.json or {}
+        name = data.get("name")
+        if not name:
+            return jsonify({"error": "Name field is required"}), 400
+        init_db()
+        with get_db() as conn:
+            cur = conn.cursor()
+            client = cur.execute("INSERT OR IGNORE INTO clients (name,membership_status) VALUES (?,?)",(name,"Active"))
+            conn.commit()
+            return (
+                jsonify({"message": f"Client {name} saved"}),
+                200,
+            )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+@app.route("/api/v3.2.4/client", methods=["GET"])
+def load_client_v3_2_4():
+    try:
+        name = request.args.get("name")
+        if not name:
+            return jsonify({"error": "Missing 'name' query parameter"}), 400
+        """refresh_summary()
+        refresh_workouts()
+        plot_charts()"""
+
+        # region DELETE
+        init_db()
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM clients WHERE name=?", (name,))
+            client = cur.fetchone()
+            if not client:
+                return jsonify({"error": "Client not found"}), 404
+            client_profile = {
+                "id": client["id"],
+                "name": client["name"],
+                "age": client["age"],
+                "height": client["height"],
+                "weight": client["weight"],
+                "program": client["program"],
+                "calories": client["calories"],
+                "membership_expiry": client["membership_expiry"]
+            }
+            return jsonify({"CLIENT PROFILE": client_profile}), 200
+        # endregion
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+@app.route("/api/v3.2.4/ai_program", methods=["POST"])
+def generate_ai_program_v3_2_4():
+    try:
+        data = request.json or {}
+        name = data.get("name")
+        program_type = data.get("program_type")
+        if not name or not program_type:
+            return jsonify({"error": "Name and program_type fields are required"}), 400
+        program_detail = random.choice(program_templates[program_type])
+        init_db()
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE clients SET program=? WHERE name=?",(program_detail,name))
+            cur.fetchone()
+            return jsonify({
+                "message": f"Program for {name}: {program_detail}"
+            }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+@app.route("/api/v3.2.4/generate_pdf", methods=["GET"])
+def generate_pdf():
+    try:
+        name = request.args.get("name")
+        if not name:
+            return jsonify({"error": "Missing 'name' query parameter"}), 400
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.cell(0, 10, f"ACEest Client Report - {name}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        init_db()
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM clients WHERE name=?", (name,))
+            client = cur.fetchone()
+            pdf.set_font("Helvetica", "", 12)
+            for i, col in enumerate(["ID", "Name", "Age", "Height", "Weight", "Program", "Calories", "Target Weight",
+                                     "Target Adherence", "Membership", "End"]):
+                pdf.cell(0, 10, f"{col}: {client[i]}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.output(f"{name}_report.pdf")
+            return jsonify({"message": f"{name}_report.pdf created"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # endregion
 
 
