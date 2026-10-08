@@ -131,10 +131,10 @@ def init_db():
         conn.close()
 
 init_db()
-@app.route("/api/v3.1.2", methods=["GET"])
+@app.route("/api/v3.2.4", methods=["GET"])
 def api_root():
     return jsonify({
-        "version": "3.1.2",
+        "version": "3.2.4",
         "status": "active",
         "service": "ACEest Fitness Foundation Engine",
         "available_endpoints": {
@@ -155,7 +155,17 @@ def api_root():
             "save_client_v3_1_2": "POST /api/v3.1.2/client",
             "load_client_v3_1_2": "GET /api/v3.1.2/client",
             "generate_ai_program": "POST /api/v3.1.2/ai_program",
-            "export_pdf_report": "GET /api/v3.1.2/pdf_report"
+            "export_pdf_report": "GET /api/v3.1.2/pdf_report",
+            "health_v3_2_4": "GET /api/v3.2.4/health",
+            "save_client_v3_2_4": "POST /api/v3.2.4/client",
+            "load_client_v3_2_4": "GET /api/v3.2.4/client",
+            "generate_ai_program_v3_2_4": "POST /api/v3.2.4/ai_program",
+            "generate_pdf": "POST /api/v3.2.4/generate_pdf",
+            "check_membership": "GET /api/v3.2.4/check_membership",
+            "refresh_summary": "GET /api/v3.2.4/refresh_summary",
+            "plot_charts": "GET /api/v3.2.4/plot_charts",
+            "refresh_workouts": "GET /api/v3.2.4/refresh_workouts",
+            "add_workout": "POST /api/v3.2.4/add_workout"
         }
     }), 200
 
@@ -819,6 +829,17 @@ def export_pdf_report():
 # endregion
 
 # region V3.2.4
+@app.route("/api/v3.2.4/health", methods=["GET"])
+def health_check_v3_2_4():
+    return (
+        jsonify(
+            {
+                "status": "healthy",
+                "service": "ACEest Fitness API V3.2.4 Backend",
+            }
+        ),
+        200,
+    )
 @app.route("/api/v3.2.4/client", methods=["POST"])
 def save_client_v3_2_4():
     try:
@@ -965,7 +986,63 @@ def plot_charts():
             return jsonify({"message": plot_chart}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
+@app.route("/api/v3.2.4/refresh_workouts", methods=["GET"])
+def refresh_workouts():
+    try:
+        name = request.args.get("name")
+        if not name:
+            return jsonify({"error": "Missing 'name' query parameter"}), 400
+        init_db()
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT date,workout_type,duration_min,notes FROM workouts WHERE client_name=? ORDER BY date DESC",(name,))
+            data = cur.fetchall()
+            if not data:
+                return jsonify({"error": f"Client {name} not found"}), 404
+            for r in data:
+                workouts = {
+                    "date": r[0],
+                    "workout_type": r[1],
+                    "duration_min": r[2],
+                    "notes": r[3]
+                }
+            return jsonify({"message": workouts}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+@app.route("/api/v3.2.4/workout", methods=["POST"])
+def add_workout():
+    try:
+        data = request.json or {}
+        name = data.get("name")
+        workout_type = ["Strength", "Hypertrophy", "Conditioning", "Mixed", "Mobility"]
+        w_type = data.get("workout")
+        # program = data.get("program")
+        if not w_type.lower() in [w.lower() for w in workout_type]:
+            return jsonify({"error": "Workout not found"}), 404
+        if not name or not w_type:
+            return jsonify({"error": "Name and Workout fields are required"}), 400
+        date_str = data.get("date", datetime.now().strftime("%Y-%m-%d"))
+        w_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        duration = float(data.get("duration", 0.0))
+        notes = data.get("notes", "")
+        init_db()
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                    """
+                    INSERT INTO workouts (client_name, date, workout_type, duration_min, notes)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (name, w_date, w_type, duration, notes),
+                )
+            workout_id = cur.lastrowid
+            conn.commit()
+            return (
+                jsonify({"message": "Workout logged successfully", "id": workout_id}),
+                200,
+            )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 # endregion
 
 
