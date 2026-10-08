@@ -7,7 +7,7 @@ import csv
 import sqlite3
 from datetime import datetime
 
-from fpdf import FPDF
+from fpdf import FPDF, XPos, YPos
 import random
 
 app = Flask(__name__)
@@ -336,6 +336,8 @@ def load_progress():
                 WHERE client_name = ? 
                 ORDER BY id ASC
             """, (name,)).fetchall()
+            if not rows:
+                return jsonify({"error": "No progress data found"}), 404
             progress_log = [
                 {"id": row["id"], "week": row["week"], "adherence": row["adherence"]}
                 for row in rows
@@ -672,7 +674,17 @@ def load_client_v3_1_2():
             client = cur.fetchone()
             if not client:
                 return jsonify({"error": "Client not found"}), 404
-            return jsonify({"CLIENT PROFILE": client}), 200
+            client_profile = {
+                "id": client["id"],
+                "name": client["name"],
+                "age": client["age"],
+                "height": client["height"],
+                "weight": client["weight"],
+                "program": client["program"],
+                "calories": client["calories"],
+                "membership_expiry": client["membership_expiry"]
+            }
+            return jsonify({"CLIENT PROFILE": client_profile}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 @app.route("/api/v3.1.2/ai_program", methods=["POST"])
@@ -769,11 +781,12 @@ def export_pdf_report():
             return jsonify({"error": "Missing 'name' query parameter"}), 400
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", "B", 16)
-        pdf.cell(0, 10, f"Client Report - {name}", ln=True, align="C")
-        pdf.set_font("Arial", "", 12)
 
-        init_db()
+        # Title Block - Clean and warn-free
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.cell(0, 10, f"Client Report - {name}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+        pdf.set_font("Helvetica", "", 12)
+
         with get_db() as conn:
             cur = conn.cursor()
             cur.execute("SELECT * FROM clients WHERE name=?", (name,))
@@ -781,17 +794,19 @@ def export_pdf_report():
             if row:
                 pdf.ln(10)
 
-                program_text = str(row[5] or "").replace('–', '-')
-                expiry_text = str(row[9] or "").replace('–', '-')
+                program_text = str(row["program"] or "").replace('–', '-')
+                expiry_text = str(row["membership_expiry"] or "").replace('–', '-')
 
-                pdf.cell(0, 10, f"Name: {row[1]}", ln=True)
-                pdf.cell(0, 10, f"Age: {row[2]}", ln=True)
-                pdf.cell(0, 10, f"Height: {row[3]} cm", ln=True)
-                pdf.cell(0, 10, f"Weight: {row[4]} kg", ln=True)
-                pdf.cell(0, 10, f"Program: {program_text}", ln=True)
-                pdf.cell(0, 10, f"Membership Expiry: {expiry_text}", ln=True)
-            pdf.output(f"{name}_report.pdf")
-            return jsonify({"message": f"Report saved as {name}_report.pdf"}),200
+                # FIX: Replaced invalid string values with proper XPos and YPos Enums
+                pdf.cell(0, 10, f"Name: {row['name']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.cell(0, 10, f"Age: {row['age']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.cell(0, 10, f"Height: {row['height']} cm", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.cell(0, 10, f"Weight: {row['weight']} kg", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.cell(0, 10, f"Program: {program_text}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.cell(0, 10, f"Membership Expiry: {expiry_text}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        pdf.output(f"{name}_report.pdf")
+        return jsonify({"message": f"Report saved as {name}_report.pdf"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 # endregion
