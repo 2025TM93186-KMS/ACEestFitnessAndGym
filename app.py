@@ -911,6 +911,60 @@ def generate_pdf():
             return jsonify({"message": f"{name}_report.pdf created"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+# ---------- MEMBERSHIP ----------
+@app.route("/api/v3.2.4/check_membership", methods=["GET"])
+def check_membership():
+
+    try:
+        name = request.args.get("name")
+        if not name:
+            return jsonify({"error": "Missing 'name' query parameter"}), 400
+        init_db()
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT membership_status,membership_end FROM clients WHERE name=?",(name,))
+            status, end = cur.fetchone()
+            return jsonify({"message": f"Membership: {status}\nRenewal Date: {end if end else 'N/A'}"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+# ---------- SUMMARY & CHARTS ----------
+@app.route("/api/v3.2.4/refresh_summary", methods=["GET"])
+def refresh_summary():
+    try:
+        name = request.args.get("name")
+        if not name:
+            return jsonify({"error": "Missing 'name' query parameter"}), 400
+        init_db()
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM clients WHERE name=?",(name,))
+            client = cur.fetchone()
+            client_summary = f"Name: {client[1]}\nProgram: {client[5]}\nCalories: {client[6]}\nMembership: {client[9]}"
+            return jsonify({"message": client_summary}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+@app.route("/api/v3.2.4/plot_charts", methods=["GET"])
+def plot_charts():
+    try:
+        name = request.args.get("name")
+        if not name:
+            return jsonify({"error": "Missing 'name' query parameter"}), 400
+        init_db()
+        with get_db() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT week, adherence FROM progress WHERE client_name=? ORDER BY id",(name,))
+            data = cur.fetchall()
+            if not data:
+                return jsonify({"error": f"Client {name} not found"}), 404
+            weeks = [d[0] for d in data]
+            adherence = [d[1] for d in data]
+            plot_chart = {
+                "week": weeks,
+                "adherence": adherence
+            }
+            return jsonify({"message": plot_chart}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # endregion
 
