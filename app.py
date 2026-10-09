@@ -916,6 +916,8 @@ def generate_pdf():
             cur = conn.cursor()
             cur.execute("SELECT * FROM clients WHERE name=?", (name,))
             client = cur.fetchone()
+            if not client:
+                return jsonify({"error": f"Client {name} not found"}), 404
             pdf.set_font("Helvetica", "", 12)
             for i, col in enumerate(["ID", "Name", "Age", "Height", "Weight", "Program", "Calories", "Target Weight",
                                      "Target Adherence", "Membership", "End"]):

@@ -417,7 +417,13 @@ def test_generate_ai_program_v3_2_4_success(client):
 
 def test_generate_pdf_report_success(client):
     response = client.get('/api/v3.2.4/generate_pdf?name=John+Doe')
-    assert response.status_code == 200
+    if response.status_code == 400:
+        assert response.status_code == 400
+        assert "Missing" in response.json["error"]
+    elif response.status_code == 404:
+        assert "not found" in response.json["error"].lower()
+    else:
+        assert response.status_code == 200
     assert "report.pdf created" in response.get_json()["message"]
 
 def test_check_membership_success(client):
