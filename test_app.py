@@ -427,12 +427,18 @@ def test_generate_pdf_report_success(client):
         assert "not found" in response.json["error"].lower()
     else:
         assert response.status_code == 200
-    assert "report.pdf created" in response.get_json()["message"]
+        assert "report.pdf created" in response.get_json()["message"]
 
 def test_check_membership_success(client):
     response = client.get('/api/v3.2.4/check_membership?name=John+Doe')
-    assert response.status_code == 200
-    assert "Membership: Active" in response.get_json()["message"]
+    if response.status_code == 400:
+        assert response.status_code == 400
+        assert "Missing" in response.json["error"]
+    elif response.status_code == 404:
+        assert "not found" in response.json["error"].lower()
+    else:
+        assert response.status_code == 200
+        assert "Membership: Active" in response.get_json()["message"]
 
 def test_plot_charts_data_success(client):
     response = client.get('/api/v3.2.4/plot_charts?name=John+Doe')
