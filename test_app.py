@@ -416,6 +416,9 @@ def test_generate_ai_program_v3_2_4_success(client):
 
 
 def test_generate_pdf_report_success(client):
+    client.post('/api/v3.2.4/client', json={
+        "name": "John Doe"
+    })
     response = client.get('/api/v3.2.4/generate_pdf?name=John+Doe')
     if response.status_code == 400:
         assert response.status_code == 400

@@ -938,7 +938,10 @@ def check_membership():
         with get_db() as conn:
             cur = conn.cursor()
             cur.execute("SELECT membership_status,membership_end FROM clients WHERE name=?",(name,))
-            status, end = cur.fetchone()
+            row = cur.fetchone()
+            if not row:
+                return jsonify({"error": "Client not found"}), 404
+            status, end = row[0], row[1]
             return jsonify({"message": f"Membership: {status}\nRenewal Date: {end if end else 'N/A'}"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
