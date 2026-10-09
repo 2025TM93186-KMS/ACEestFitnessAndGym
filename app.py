@@ -40,97 +40,91 @@ def get_db():
     return conn
 
 def init_db():
-    try:
-        with get_db() as conn:
-            cur = conn.cursor()
-            # Users table
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE,
-                    password TEXT,
-                    role TEXT
-                )
-                """
-            )
-            # Default admin user
-            cur.execute(
-                "INSERT OR IGNORE INTO users (username, password, role) "
-                "VALUES ('admin','admin','Admin')"
-            )
-            # Clients
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS clients (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT UNIQUE,
-                    age INTEGER,
-                    height REAL,
-                    weight REAL,
-                    program TEXT,
-                    calories INTEGER,
-                    target_weight REAL,
-                    target_adherence INTEGER,
-                    membership_expiry TEXT
-                )
-                """
-            )
-            # Progress
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS progress (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    client_name TEXT,
-                    week TEXT,
-                    adherence INTEGER
-                )
-                """
-            )
-            # Workouts
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS workouts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    client_name TEXT,
-                    date TEXT,
-                    workout_type TEXT,
-                    duration_min INTEGER,
-                    notes TEXT
-                )
-                """
-            )
-            # Exercises
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS exercises (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    workout_id INTEGER,
-                    name TEXT,
-                    sets INTEGER,
-                    reps INTEGER,
-                    weight REAL
-                )
-                """
-            )
-            # Metrics
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS metrics (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    client_name TEXT,
-                    date TEXT,
-                    weight REAL,
-                    waist REAL,
-                    bodyfat REAL
-                )
-                """
-            )
-            conn.commit()
-    finally:
-        conn.close()
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
 
-init_db()
+    # Users (for role-based login)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        username TEXT PRIMARY KEY,
+        password TEXT,
+        role TEXT
+    )
+    """)
+
+    # Clients
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS clients (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE,
+        age INTEGER,
+        height REAL,
+        weight REAL,
+        program TEXT,
+        calories INTEGER,
+        target_weight REAL,
+        target_adherence INTEGER,
+        membership_status TEXT,
+        membership_end TEXT
+    )
+    """)
+
+    # Progress
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS progress (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_name TEXT,
+        week TEXT,
+        adherence INTEGER
+    )
+    """)
+
+    # Workouts
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS workouts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_name TEXT,
+        date TEXT,
+        workout_type TEXT,
+        duration_min INTEGER,
+        notes TEXT
+    )
+    """)
+
+    # Exercises
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS exercises (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workout_id INTEGER,
+        name TEXT,
+        sets INTEGER,
+        reps INTEGER,
+        weight REAL
+    )
+    """)
+
+    # Metrics
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_name TEXT,
+        date TEXT,
+        weight REAL,
+        waist REAL,
+        bodyfat REAL
+    )
+    """)
+
+    # Add default admin if not exists
+    cur.execute("SELECT * FROM users WHERE username='admin'")
+    if not cur.fetchone():
+        cur.execute("INSERT INTO users VALUES ('admin','admin','Admin')")
+
+    conn.commit()
+    conn.close()
+
+#init_db()
+
 @app.route("/api/v3.2.4", methods=["GET"])
 def api_root():
     return jsonify({
@@ -631,7 +625,7 @@ def get_client_list():
                     "weight": client["weight"],
                     "program": client["program"],
                     "calories": client["calories"],
-                    "membership_expiry": client["membership_expiry"]
+                    "membership_end": client["membership_end"]
                 })
             return jsonify({"clients": client_list}), 200
     except Exception as e:
@@ -665,7 +659,7 @@ def save_client_v3_1_2():
                 client = cur.execute(
                     """
                     INSERT OR REPLACE INTO clients
-                    (name, age, height, weight, program, calories, membership_expiry)
+                    (name, age, height, weight, program, calories, membership_end)
                     VALUES (?,?,?,?,?,?,?)
                     """,
                     (name, age, height, weight, program, calories, membership),
@@ -699,7 +693,7 @@ def load_client_v3_1_2():
                 "weight": client["weight"],
                 "program": client["program"],
                 "calories": client["calories"],
-                "membership_expiry": client["membership_expiry"]
+                "membership_expiry": client["membership_end"]
             }
             return jsonify({"CLIENT PROFILE": client_profile}), 200
     except Exception as e:
@@ -812,7 +806,7 @@ def export_pdf_report():
                 pdf.ln(10)
 
                 program_text = str(row["program"] or "").replace('–', '-')
-                expiry_text = str(row["membership_expiry"] or "").replace('–', '-')
+                expiry_text = str(row["membership_end"] or "").replace('–', '-')
 
                 # FIX: Replaced invalid string values with proper XPos and YPos Enums
                 pdf.cell(0, 10, f"Name: {row['name']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
@@ -847,7 +841,6 @@ def save_client_v3_2_4():
         name = data.get("name")
         if not name:
             return jsonify({"error": "Name field is required"}), 400
-        init_db()
         with get_db() as conn:
             cur = conn.cursor()
             client = cur.execute("INSERT OR IGNORE INTO clients (name,membership_status) VALUES (?,?)",(name,"Active"))
@@ -867,27 +860,24 @@ def load_client_v3_2_4():
         """refresh_summary()
         refresh_workouts()
         plot_charts()"""
+        with app.test_request_context(f'/api/v3.2.4/refresh_summary?name={name}'):
+            summary_response, status_code = refresh_summary()
+            summary_json = summary_response.get_json()
+            summary_message = summary_json.get("message")
+        with app.test_request_context(f'/api/v3.2.4/refresh_workouts?name={name}'):
+            workouts_response, status_code = refresh_workouts()
+            workouts_json = workouts_response.get_json()
+            workouts_message = workouts_json.get("message")
+        with app.test_request_context(f'/api/v3.2.4/plot_charts?name={name}'):
+            plot_charts_response, status_code = plot_charts()
+            plot_charts_json = plot_charts_response.get_json()
+            plot_charts_message = plot_charts_json.get("message")
 
-        # region DELETE
-        init_db()
-        with get_db() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT * FROM clients WHERE name=?", (name,))
-            client = cur.fetchone()
-            if not client:
-                return jsonify({"error": "Client not found"}), 404
-            client_profile = {
-                "id": client["id"],
-                "name": client["name"],
-                "age": client["age"],
-                "height": client["height"],
-                "weight": client["weight"],
-                "program": client["program"],
-                "calories": client["calories"],
-                "membership_expiry": client["membership_expiry"]
-            }
-            return jsonify({"CLIENT PROFILE": client_profile}), 200
-        # endregion
+        return jsonify({
+            "Summary": summary_message,
+            "Workouts": workouts_message,
+            "Plot": plot_charts_message
+        }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 @app.route("/api/v3.2.4/ai_program", methods=["POST"])
@@ -898,12 +888,14 @@ def generate_ai_program_v3_2_4():
         program_type = data.get("program_type")
         if not name or not program_type:
             return jsonify({"error": "Name and program_type fields are required"}), 400
+        if program_type not in program_templates:
+            return jsonify({"error": f"Program type {program_type} not found"}), 404
         program_detail = random.choice(program_templates[program_type])
         init_db()
         with get_db() as conn:
             cur = conn.cursor()
             cur.execute("UPDATE clients SET program=? WHERE name=?",(program_detail,name))
-            cur.fetchone()
+            conn.commit()
             return jsonify({
                 "message": f"Program for {name}: {program_detail}"
             }), 200
@@ -960,7 +952,14 @@ def refresh_summary():
             cur = conn.cursor()
             cur.execute("SELECT * FROM clients WHERE name=?",(name,))
             client = cur.fetchone()
-            client_summary = f"Name: {client[1]}\nProgram: {client[5]}\nCalories: {client[6]}\nMembership: {client[9]}"
+            if not client:
+                return jsonify({"error": "Client not found"}), 404
+            client_summary = {
+                "Name": client[1],
+                "Program": client[5],
+                "Calories": client[6],
+                "Membership": client[9]
+            }
             return jsonify({"message": client_summary}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1047,6 +1046,7 @@ def add_workout():
 
 
 if __name__ == "__main__":
+    init_db()
     port_number = 5000
     for arg in sys.argv:
         if arg.startswith('--port='):

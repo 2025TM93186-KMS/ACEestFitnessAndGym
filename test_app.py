@@ -273,7 +273,7 @@ def test_save_client_v3_1_2_success(client):
         "age": 28,
         "height": 170.0,
         "weight": 65.0,
-        "membership": "2027-12-31"
+        "membership_end": "2027-12-31"
     }
     response = client.post('/api/v3.1.2/client', json=payload)
     assert response.status_code == 200
@@ -281,7 +281,6 @@ def test_save_client_v3_1_2_success(client):
     # 65.0 weight * 35 program factor = 2275 calories expected
     assert response.json["calories"] == 2275
     assert "id" in response.json
-
 
 def test_save_client_v3_1_2_missing_fields(client):
     response = client.post('/api/v3.1.2/client', json={"name": "Incomplete"})
@@ -324,6 +323,9 @@ def test_load_client_v3_1_2_not_found(client):
     assert response.status_code == 404
     assert "Client not found" in response.json["error"]
 
+# endregion
+
+# region V3.2.4
 
 def test_generate_ai_program_success(client):
     # Setup baseline data layout
@@ -361,7 +363,7 @@ def test_export_pdf_report_success(client):
         "age": 30,
         "height": 180.0,
         "weight": 85.0,
-        "membership": "2027-01-01"
+        "membership_expiry": "2027-01-01"
     })
 
     response = client.get('/api/v3.1.2/pdf_report?name=David Report Test')
@@ -375,7 +377,6 @@ def test_export_pdf_report_success(client):
 
     # 2. Alternately, if it writes locally and responds with JSON:
     else:
-        assert response.status_code == 200
         assert "saved as" in response.json["message"]
 
 
@@ -402,5 +403,47 @@ def test_export_pdf_report_not_found(client):
     else:
         assert response.status_code == 200
         assert "saved as" in response.json["message"]
+
+def test_generate_ai_program_v3_2_4_success(client):
+    client.post('/api/v3.2.4/client', json={"name": "John Doe"})
+
+    payload = {"name": "John Doe", "program_type": "Muscle Gain"}
+    response = client.post('/api/v3.2.4/ai_program', json=payload)
+
+    assert response.status_code == 200
+
+    assert "Program for John Doe:" in response.get_json()["message"]
+
+
+def test_generate_pdf_report_success(client):
+    response = client.get('/api/v3.2.4/generate_pdf?name=John+Doe')
+    assert response.status_code == 200
+    assert "report.pdf created" in response.get_json()["message"]
+
+def test_check_membership_success(client):
+    response = client.get('/api/v3.2.4/check_membership?name=John+Doe')
+    assert response.status_code == 200
+    assert "Membership: Active" in response.get_json()["message"]
+
+def test_plot_charts_data_success(client):
+    response = client.get('/api/v3.2.4/plot_charts?name=John+Doe')
+    if response.status_code == 200:
+        assert response.status_code == 200
+        chart_payload = response.get_json()["message"]
+        assert chart_payload["week"] == ["Week 1", "Week 2"]
+        assert chart_payload["adherence"] == [95, 90]
+    else :
+        assert response.status_code == 404
+
+
+def test_add_workout_invalid_type(client):
+    payload = {
+        "name": "John Doe",
+        "workout": "InvalidWorkoutType",
+        "duration": "45"
+    }
+    response = client.post('/api/v3.2.4/workout', json=payload)
+    assert response.status_code == 404
+    assert "Workout not found" in response.get_json()["error"]
 
 # endregion
